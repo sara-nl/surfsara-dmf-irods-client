@@ -1,0 +1,80 @@
+#!/usr/bin/env python
+import os
+import sys
+import argparse
+import signal
+import atexit
+import logging
+from dm_irods.util import get_pid_file
+from dm_irods.util import get_socket_file
+from dm_irods.util import ensure_daemon_is_running
+from dm_irods.util import ensure_daemon_is_stopped
+from dm_irods.util import get_daemon_status
+import dm_irods.daemon
+
+
+def init_logger(fname=None):
+    logger = logging.getLogger('dm_idaemon')
+    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(log_fmt)
+    if fname is None:
+        ch = logging.StreamHandler()
+    else:
+        ch = logging.FileHandler(fname)
+    ch.setFormatter(formatter)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(ch)
+    return logger
+
+
+def rm_file(fname, logger=logging.getLogger('dm_idaemon')):
+    logger = logging.getLogger('dm_idaemon')
+    try:
+        os.remove(fname)
+    except Exception as ex:
+        logger.error("could not remove file %s (%s)" % (fname, str(ex)))
+
+
+def create_pid_file(fname, logger=logging.getLogger('dm_idaemon')):
+    pid = os.getpid()
+    fp = open(fname, "w")
+    logger.info("creating pid file %s pid=%d", fname, pid)
+    fp.write("%d" % pid)
+    fp.close()
+
+
+def run_daemon(logger=logging.getLogger('dm_idaemon')):
+    pid_file = get_pid_file()
+    create_pid_file(pid_file, logger)
+    atexit.register(rm_file, fname=pid_file, logger=logger)
+    socket_file = get_socket_file()
+    atexit.register(rm_file, fname=socket_file, logger=logger)
+    daemon = dm_irods.daemon.Daemon(socket_file=socket_file,
+                                    ticket_dir=dm_irods.util.get_ticket_dir(),
+                                    logger=logger)
+    signal.signal(signal.SIGINT, daemon.stop)
+    daemon.start_listener()
+    daemon.run()
+
+
+def run(argv=sys.argv[1:]):
+    parser = argparse.ArgumentParser(description='iget dm daemon.')
+    parser.add_argument("-l", "--log", type=str, help="log to file")
+    parser.add_argument("operation", type=str, nargs='?',
+                        help="start|stop|status (optional)")
+    args = parser.parse_args(argv)
+    logger = init_logger(args.log)
+    dm_irods.util.ensure_config_path_exists(logger=logger)
+
+    if args.operation == "start":
+        ensure_daemon_is_running(logfile=args.log, logger=logger)
+    elif args.operation == "stop":
+        ensure_daemon_is_stopped(logger=logger)
+    elif args.operation == "status":
+        print(get_daemon_status(logger))
+    else:
+        run_daemon(logger=logger)
+
+
+if __name__ == "__main__":
+    run()
