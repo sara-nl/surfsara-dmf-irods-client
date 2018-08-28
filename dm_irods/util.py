@@ -13,10 +13,6 @@ def get_ticket_dir():
     return os.path.join(get_config_dir(), "tickets")
 
 
-def get_dm_inodes_dir():
-    return os.path.join(get_config_dir(), "inodes")
-
-
 def get_pid_file():
     config_dir = get_config_dir()
     return os.path.join(config_dir, "dm_idaemon.pid")
