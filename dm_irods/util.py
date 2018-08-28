@@ -13,6 +13,10 @@ def get_ticket_dir():
     return os.path.join(get_config_dir(), "tickets")
 
 
+def get_dm_inodes_dir():
+    return os.path.join(get_config_dir(), "inodes")
+
+
 def get_pid_file():
     config_dir = get_config_dir()
     return os.path.join(config_dir, "dm_idaemon.pid")
@@ -93,8 +97,8 @@ def get_daemon_status(logger=logging.getLogger('dm_idaemon')):
             return "NOT RUNNING"
 
 
-def ensure_config_path_exists(logger=logging.getLogger('dm_idaemon')):
-    config_dir = get_config_dir()
+def ensure_config_path_exists(config_dir=get_config_dir(),
+                              logger=logging.getLogger('dm_idaemon')):
     if not os.path.exists(config_dir):
         logger.info("creating directory %s", config_dir)
         os.makedirs(config_dir)
