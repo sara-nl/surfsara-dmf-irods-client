@@ -1,40 +1,5 @@
 #!/usr/bin/env python
-import sys
-import json
-import time
-import datetime
-from dm_irods.socket_utils import send_message
-from dm_irods.socket_utils import recv_message
-from dm_irods.socket_utils import connect
-from dm_irods.util import ensure_daemon_is_running
-from dm_irods.util import get_socket_file
-
-
-def print_table(data):
-    fmt = '{0: <11}{1: <20}{2: <40}'
-    print(fmt.format("STATUS",
-                     "TIME",
-                     "FILE"))
-    lst = data.get('tickets', [])
-    time_fmt = '%Y-%m-%d %H:%M:%S'
-    for item in lst:
-        tim = float(item.get('time_created', int(time.time())))
-        dtg = datetime.datetime.fromtimestamp(tim)
-        print(fmt.format(item.get('status', ''),
-                         dtg.strftime(time_fmt),
-                         item.get('filename', '')))
-
-
-def list_tickets(argv=sys.argv[1:]):
-    ensure_daemon_is_running()
-    socket_file = get_socket_file()
-    sock = connect(socket_file)
-    send_message(sock, '{"list": true}')
-    response = recv_message(sock)
-    sock.close()
-    data = json.loads(response)
-    print_table(data)
-
+from dm_irods import dm_ilist
 
 if __name__ == "__main__":
-    list_tickets()
+    dm_ilist()
