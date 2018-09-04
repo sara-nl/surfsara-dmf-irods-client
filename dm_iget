@@ -1,42 +1,5 @@
 #!/usr/bin/env python
-import sys
-import logging
-import argparse
-import json
-import dm_irods.util
-from dm_irods.socket_utils import send_message
-from dm_irods.socket_utils import recv_message
-from dm_irods.socket_utils import connect
-from dm_irods.util import ensure_daemon_is_running
-
-
-def init_logger():
-    logger = logging.getLogger('dm_iclient')
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    formatter = logging.Formatter(log_fmt)
-    ch = logging.StreamHandler()
-    ch.setFormatter(formatter)
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(ch)
-    return logger
-
-
-def get_file_from_archive(argv=sys.argv[1:]):
-    logger = init_logger()
-    parser = argparse.ArgumentParser(description='Get files from archive.')
-    parser.add_argument('files', type=str, nargs='+', help='files')
-    args = parser.parse_args(argv)
-    ensure_daemon_is_running(logger=logger)
-    socket_file = dm_irods.util.get_socket_file()
-    for f in args.files:
-        sock = connect(socket_file, logger)
-        data = {"get": f}
-        msg = json.dumps(data)
-        send_message(sock, msg)
-        response = recv_message(sock)
-        sock.close()
-        print(response)
-
+from dm_irods import dm_iget
 
 if __name__ == "__main__":
-    get_file_from_archive()
+    dm_iget()

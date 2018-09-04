@@ -1,0 +1,3 @@
+[submodule "py-socket-server"]
+	path = py-socket-server
+	url = https://github.com/stefan-wolfsheimer/py-socket-server.git
