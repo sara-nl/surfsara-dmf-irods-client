@@ -18,7 +18,7 @@ class iRODS(object):
         if 'irods_password' in kwargs:
             pw = base64.b64decode(kwargs['irods_password'])
             kwargs['irods_password'] = pw
-        self.session = iRODSSession(**kwargs)
+        self.session = iRODSSession(connection_timeout=connection_timeout, **kwargs)
         self.session.connection_timeout = connection_timeout
         self.resource_name = resource_name
         self.logger = logger
