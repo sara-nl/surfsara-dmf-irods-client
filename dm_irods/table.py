@@ -8,7 +8,8 @@ from cprint import format_bold
 
 class Table(object):
     filewidth = 40
-    fmt = '{DMF: <4}{FILE: <' + str(filewidth) + '}{TIME: <20}{STATUS: <11}'
+    fmt = '{DMF: <4}{FILE: <' + str(filewidth) + \
+          '}{TIME: <20}{STATUS: <11}{MOD: <4}'
     time_fmt = '%Y-%m-%d %H:%M:%S'
     status_formatter = {"WAITING": format_bold,
                         "CANCELED": format_warning,
@@ -18,7 +19,7 @@ class Table(object):
                         "UNDEF": format_error,
                         "ERROR": format_error,
                         "RETRY": format_warning}
-    
+
     def __init__(self):
         self.header_written = False
 
@@ -36,7 +37,8 @@ class Table(object):
         print(Table.fmt.format(STATUS=status,
                                DMF=obj.get('meta', {}). get('SURF-DMF', ''),
                                TIME=dtg,
-                               FILE=self.slice_filename(obj)))
+                               FILE=self.slice_filename(obj),
+                               MOD=obj.get('mode', '')))
 
     def slice_filename(self, obj):
         filename = obj.get('collection', '') + '/' + obj.get('object')
@@ -50,4 +52,5 @@ class Table(object):
         print(Table.fmt.format(STATUS='STATUS',
                                DMF='DMF',
                                TIME="TIME",
-                               FILE="FILE"))
+                               FILE="FILE",
+                               MOD="MOD"))
