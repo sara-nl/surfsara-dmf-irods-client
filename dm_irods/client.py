@@ -27,9 +27,9 @@ def print_request_error(code, result):
             print('Exception %s raised' % obj.get('exception', '?'))
             print('Message: %s' % obj.get('msg', '?'))
             print('Traceback: %s' % obj.get('traceback', '?'))
-            print_error(obj.get('msg', '?'))
+            print_error(obj.get('msg', '?'), box=True)
         except Exception:
-            print_error(result)
+            print_error(result, box=True)
 
 
 def ensure_daemon_is_running():
@@ -57,7 +57,7 @@ def ensure_daemon_is_running():
                 sys.exit(8)
     except Exception as e:
         print(traceback.format_exc())
-        print_error(str(e))
+        print_error(str(e), box=True)
         sys.exit(8)
 
 
@@ -81,15 +81,20 @@ def dm_iconfig(argv=sys.argv[1:]):
     env_file_group.add_argument("--irods_authentication_file",
                                 type=str,
                                 help="irods authentication file")
-    cfg_file_group = parser.add_argument_group('iRODS configuration')
-    cfg_file_group.add_argument('--irods_zone_name', type=str)
-    cfg_file_group.add_argument('--irods_host', type=str)
-    cfg_file_group.add_argument('--irods_port', type=int)
-    cfg_file_group.add_argument('--irods_user_name', type=int)
-    cfg_file_group.add_argument('--timeout', type=int,
-                                help='timeout (in seconds, default 10)')
-    cfg_file_group.add_argument('--resource', type=str,
-                                help='iRODS resource (default arcRescSURF01)')
+    cfg_group = parser.add_argument_group('iRODS configuration')
+    cfg_group.add_argument('--irods_zone_name', type=str)
+    cfg_group.add_argument('--irods_host', type=str)
+    cfg_group.add_argument('--irods_port', type=int)
+    cfg_group.add_argument('--irods_user_name', type=int)
+    cfg_group.add_argument('--timeout', type=int,
+                           help='timeout (in seconds, default 10)')
+    cfg_group.add_argument('--resource', type=str,
+                           help='iRODS resource (default arcRescSURF01)')
+    cfg_server_group = parser.add_argument_group('DM-iRODS config')
+    cfg_server_group.add_argument('--houskeeping',
+                                  help=('remove old jobs after this time ' +
+                                        '(hours, default=24)'),
+                                  type=int)
 
     args = parser.parse_args(argv)
     conflict = []
@@ -110,7 +115,7 @@ def dm_iconfig(argv=sys.argv[1:]):
                 conflict.append('--irods_authentication_file <-> --%s' % excl)
     if len(conflict) > 0:
         print_error('conflicting arguments:\n' +
-                    '\n'.join(conflict))
+                    '\n'.join(conflict), box=True)
         sys.exit(8)
     for excl in excl_list:
         if getattr(args, excl):

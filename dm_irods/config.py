@@ -65,33 +65,55 @@ class DmIRodsConfig(object):
             self.is_configured = False
 
     def ensure_configured(self, force=False, env_file_based=None, config={}):
+        def _get_timeout(config):
+            irods_config = self.config.get('irods', {})
+            default_value = config.get('connection_timeout',
+                                       irods_config.get('connection_timeout',
+                                                        10))
+            return question('iRODS connection timeout (seconds) ',
+                            default_value=default_value,
+                            return_type=int)
+
+        def _get_resource_name(config):
+            irods_config = self.config.get('irods', {})
+            default_value = config.get('resource_name',
+                                       irods_config.get('resource_name',
+                                                        'arcRescSURF01'))
+            return question('iRODS resource',
+                            default_value=default_value,
+                            return_type=str)
+
+        def _get_housekeeping(config):
+            default_value = config.get('housekeeping',
+                                       self.config.get('housekeeping', 24))
+            return question('remove old jobs after n hours',
+                            default_value=default_value,
+                            return_type=int)
+
         if self.is_configured and not force:
             return True
         else:
             if env_file_based is None:
                 prompt = 'Using irods_environment.json based config? '
                 env_file_based = question_boolean(prompt, default_value=True)
+            cfg = {}
             if env_file_based:
-                cfg = self.configure_env_file(config)
+                cfg['irods'] = self.configure_env_file(config)
             else:
-                cfg = self.configure_entries(config)
-            def_timeout = config.get('connection_timeout', 10)
-            prompt = 'iRODS connection timeout (seconds) '
-            cfg['connection_timeout'] = question(prompt,
-                                                 default_value=def_timeout,
-                                                 return_type=int)
-            def_res = config.get('resource_name', 'arcRescSURF01')
-            cfg['resource_name'] = question('iRODS resource',
-                                            default_value=def_res)
+                cfg['irods'] = self.configure_entries(config)
+            cfg['irods']['connection_timeout'] = _get_timeout(config)
+            cfg['irods']['resource_name'] = _get_resource_name(config)
+            cfg['housekeeping'] = _get_housekeeping(config)
+
             dirname = os.path.dirname(self.config_file)
             if not os.path.exists(dirname):
                 self.logger.info('mkdir %s', dirname)
                 os.makedirs(dirname)
             self.logger.info('writing config to %s', self.config_file)
-            for line in json.dumps(cfg, 4).split("\n"):
+            for line in json.dumps(cfg, indent=4).split("\n"):
                 self.logger.info(line)
             with open(self.config_file, "wr") as fp:
-                fp.write(json.dumps(cfg, 4))
+                fp.write(json.dumps(cfg, indent=4))
 
     def configure_env_file(self, config):
         def_env_file = os.path.join(os.path.expanduser("~"),
@@ -114,8 +136,19 @@ class DmIRodsConfig(object):
                 'irods_authentication_file': auth_file}
 
     def configure_entries(self, config):
-        if 'irods_port' not in config:
-            config['irods_port'] = 1247
+        def_env_file = os.path.join(os.path.expanduser("~"),
+                                    ".irods",
+                                    "irods_environment.json")
+        def_config = {}
+        if os.path.isfile(def_env_file):
+            with open(def_env_file) as f:
+                for k, v in json.load(f).items():
+                    if isinstance(v, unicode):
+                        def_config[str(k)] = str(v)
+                    else:
+                        def_config[str(k)] = v
+        if 'irods_port' not in def_config:
+            def_config['irods_port'] = 1247
         fields = ['irods_host',
                   'irods_port',
                   'irods_user_name',
@@ -127,7 +160,9 @@ class DmIRodsConfig(object):
             else:
                 return_type = str
             value = question('iRODS config: %s' % k,
-                             default_value=config.get(k, None),
+                             default_value=config.get(k,
+                                                      def_config.get(k,
+                                                                     None)),
                              return_type=return_type)
             ret[k] = value
         return ret

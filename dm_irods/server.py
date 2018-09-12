@@ -7,8 +7,6 @@ import time
 from irods_session import iRODS
 from config import DmIRodsConfig
 from irods.exception import NetworkException
-from irods.exception import DataObjectDoesNotExist
-from irods.exception import CollectionDoesNotExist
 from irods.exception import RULE_FAILED_ERR
 sys.path.insert(0,
                 os.path.join(
@@ -21,19 +19,21 @@ from socket_server import ReturnCode
 class Ticket(object):
     WAITING = 1
     CANCELED = 2
-    PROCESSING = 3
-    DONE = 4
-    UNDEF = 5
-    ERROR = 6
-    RETRY = 7
+    GETTING = 3
+    PUTTING = 4
+    DONE = 5
+    UNDEF = 6
+    ERROR = 7
+    RETRY = 8
 
     code2string = {1: "WAITING",
                    2: "CANCELED",
-                   3: "PROCESSING",
-                   4: "DONE",
-                   5: "UNDEF",
-                   6: "ERROR",
-                   7: "RETRY"}
+                   3: "GETTING",
+                   4: "PUTTING",
+                   5: "DONE",
+                   6: "UNDEF",
+                   7: "ERROR",
+                   8: "RETRY"}
 
     def __init__(self,
                  filename,
@@ -43,15 +43,17 @@ class Ticket(object):
                  cwd=os.getcwd()):
         self.status = status
         self.filename = filename
-        self.time_created = time_created
         self.cwd = cwd
         self.retries = retries
-        if self.time_created is None:
+        if time_created is None:
             self.time_created = time.time()
+        else:
+            self.time_created = float(time_created)
 
     def is_active(self):
         return (self.status == Ticket.WAITING or
-                self.status == Ticket.PROCESSING or
+                self.status == Ticket.GETTING or
+                self.status == Ticket.PUTTING or
                 self.status == Ticket.RETRY)
 
     def step(self, logger=logging.getLogger("Daemon")):
@@ -101,12 +103,16 @@ class DmIRodsServer(Server):
     ALREADY_REGISTERED = 2
     FAILED = 3
 
+    TICK_INTERVAL = 10
+    HOUSEKEEPING_INTERVAL = 3600
+
     @staticmethod
     def get_socket_file():
         return os.path.join(os.path.expanduser("~"),
                             ".DmIRodsServer", "DmIRodsServer.socket")
 
     def __init__(self, socket_file, **kwargs):
+        kwargs['tick_sec'] = DmIRodsServer.TICK_INTERVAL
         super(DmIRodsServer, self).__init__(DmIRodsServer.get_socket_file(),
                                             **kwargs)
         self.ticket_dir = os.path.join(os.path.expanduser("~"),
@@ -119,6 +125,8 @@ class DmIRodsServer(Server):
         self.read_tickets()
         self.dm_irods_config = DmIRodsConfig(logger=self.logger)
         self.config = self.dm_irods_config.config
+        self.last_housekeeping = time.time()
+        self.housekeeping_interval = DmIRodsServer.HOUSEKEEPING_INTERVAL
         if not self.dm_irods_config.is_configured:
             raise RuntimeError('failed to read config from %s' %
                                self.dm_irods_config.config_file)
@@ -144,11 +152,11 @@ class DmIRodsServer(Server):
             obj = json.loads(data)
             return self.process_get(obj)
         elif "password_configured" in obj:
-            ret = ('irods_password' in self.config or
-                   'irods_authentication_file' in self.config)
+            ret = ('irods_password' in self.config.get('irods', {}) or
+                   'irods_authentication_file' in self.config.get('irods', {}))
             return (ReturnCode.OK, json.dumps({'password_configured': ret}))
         elif "set_password" in obj:
-            self.config['irods_password'] = obj["set_password"]
+            self.config['irods']['irods_password'] = obj["set_password"]
             return (ReturnCode.OK, json.dumps({'password_configured': True}))
         else:
             return (ReturnCode.ERROR,
@@ -182,7 +190,7 @@ class DmIRodsServer(Server):
                      "msg": "invalid type: %s" % s})
 
     def process_list(self, obj):
-        irods = iRODS(logger=self.logger, **self.config)
+        irods = iRODS(logger=self.logger, **self.config['irods'])
         missing_tickets = {}
         for filename, ticket in self.tickets.items():
             if ticket.status != Ticket.DONE:
@@ -255,14 +263,33 @@ class DmIRodsServer(Server):
                                ticket_file), "w") as fp:
             fp.write(ticket.to_json())
 
+    def delete_ticket(self,  p):
+        ticket = self.tickets[p]
+        ticket_file = os.path.join(self.ticket_dir,
+                                   ticket.filename.replace('/', '#') + ".json")
+        self.logger.info('remove ticket for %s', p)
+        del self.tickets[p]
+        if p in self.active_tickets:
+            del self.active_tickets[p]
+        try:
+            os.remove(ticket_file)
+        except Exception as e:
+            self.logger.warning('cannot remove ticket file %s', ticket_file)
+            self.logger.error(e.__class__.__name__)
+            self.logger.error(str(e))
+            for line in traceback.format_exc().split('\n'):
+                self.logger.error(line)
+
     def tick(self):
+        self.housekeeping()
         for p, ticket in self.active_tickets.items():
             if not self.active:
                 break
             if ticket.status in [Ticket.WAITING, Ticket.RETRY]:
-                irods = iRODS(logger=self.logger)
+                irods = iRODS(logger=self.logger, **self.config['irods'])
                 try:
                     self.logger.info('get %s' % p)
+                    self.tickets[p].status = Ticket.GETTING
                     irods.get(ticket)
                     self.logger.info('done %s' % p)
                     self.tickets[p].status = Ticket.DONE
@@ -280,29 +307,41 @@ class DmIRodsServer(Server):
                         self.update_ticket(p)
                     else:
                         self.logger.error('failed to get %s', p)
-                        self.logger.error(e.__class__.__name__)
-                        self.logger.error(str(e))
-                        for line in traceback.format_exc().split('\n'):
-                            self.logger.error(line)
+                        self._log_exception(e, traceback.format_exc())
                         self.tickets[p].status = Ticket.ERROR
                         del self.active_tickets[p]
                         self.update_ticket(p)
-                except (DataObjectDoesNotExist,
-                        CollectionDoesNotExist) as e:
-                    self.logger.error('failed to get %s', p)
-                    self.logger.error(e.__class__.__name__)
-                    self.logger.error(str(e))
-                    for line in traceback.format_exc().split('\n'):
-                        self.logger.error(line)
-                    self.tickets[p].status = Ticket.ERROR
-                    del self.active_tickets[p]
-                    self.update_ticket(p)
                 except Exception as e:
                     self.logger.error('failed to get %s', p)
-                    self.logger.error(e.__class__.__name__)
-                    self.logger.error(str(e))
-                    for line in traceback.format_exc().split('\n'):
-                        self.logger.error(line)
+                    self._log_exception(e, traceback.format_exc())
                     self.tickets[p].status = Ticket.ERROR
                     del self.active_tickets[p]
                     self.update_ticket(p)
+
+    def housekeeping(self):
+        curr = time.time()
+        keep_seconds = self.config.get('housekeeping', 24) * 3600
+        if curr - self.last_housekeeping > self.housekeeping_interval:
+            self.logger.info('housekeeping')
+            tickets = {p: t for p, t in self.tickets.items()}
+            try:
+                irods = iRODS(logger=self.logger, **self.config['irods'])
+                for obj in irods.list_objects():
+                    filename = "%s/%s" % (obj.get('collection', ''),
+                                          obj.get('object'))
+                    if filename in self.tickets:
+                        del tickets[filename]
+                for p, ticket in tickets.items():
+                    age = time.time() - ticket.time_created
+                    if age > keep_seconds:
+                        self.delete_ticket(p)
+            except Exception as e:
+                self.logger.error('housekeeping failed')
+                self._log_exception(e, traceback.format_exc())
+            self.last_houskeeping = curr
+
+    def _log_exception(self, e, tb):
+        self.logger.error(e.__class__.__name__)
+        self.logger.error(str(e))
+        for line in tb.split('\n'):
+            self.logger.error(line)

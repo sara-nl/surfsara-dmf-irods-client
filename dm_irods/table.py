@@ -1,11 +1,24 @@
 import datetime
+from cprint import format_error
+from cprint import format_processing
+from cprint import format_warning
+from cprint import format_done
+from cprint import format_bold
 
 
 class Table(object):
     filewidth = 40
     fmt = '{DMF: <4}{FILE: <' + str(filewidth) + '}{TIME: <20}{STATUS: <11}'
     time_fmt = '%Y-%m-%d %H:%M:%S'
-
+    status_formatter = {"WAITING": format_bold,
+                        "CANCELED": format_warning,
+                        "GETTING": format_processing,
+                        "PUTTING": format_processing,
+                        "DONE": format_done,
+                        "UNDEF": format_error,
+                        "ERROR": format_error,
+                        "RETRY": format_warning}
+    
     def __init__(self):
         self.header_written = False
 
@@ -17,7 +30,10 @@ class Table(object):
             dtg = datetime.datetime.fromtimestamp(tim).strftime(Table.time_fmt)
         else:
             dtg = ''
-        print(Table.fmt.format(STATUS=obj.get('status', ''),
+        status = obj.get('status', '')
+        if status in Table.status_formatter:
+            status = Table.status_formatter[status](status)
+        print(Table.fmt.format(STATUS=status,
                                DMF=obj.get('meta', {}). get('SURF-DMF', ''),
                                TIME=dtg,
                                FILE=self.slice_filename(obj)))
