@@ -14,3 +14,5 @@ The client application consists of 6 components:
 - a daemopn that handles file transfer in the background.
 - 5 command line tools for mannaging the daemon and controlling file transfer.
 
+![architecture](https://raw.githubusercontent.com/sara-nl/iRODS_DMF_client/master/doc/arch.png)
+
