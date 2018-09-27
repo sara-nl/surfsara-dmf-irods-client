@@ -5,6 +5,7 @@ import socket
 import time
 import json
 import traceback
+import errno
 from util import send_message
 from util import recv_message
 from util import ReturnCode
@@ -134,4 +135,10 @@ class Server(object):
         msg = {'exception': e.__class__.__name__,
                'msg': strmsg,
                'traceback': tb}
-        send_message(conn, json.dumps(msg), ReturnCode.ERROR)
+        try:
+            send_message(conn, json.dumps(msg), ReturnCode.ERROR)
+        except socket.error as e:
+            if e.errno != errno.EPIPE:
+                raise
+        except Exception:
+            raise
