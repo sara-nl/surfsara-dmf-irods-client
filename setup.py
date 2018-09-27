@@ -16,7 +16,4 @@ setup(name='irods-dmf-client',
       install_requires=[
           "termcolor",
           "python-irodsclient",
-          "py-socket-server"],
-      dependency_links=[
-        "git+https://github.com/stefan-wolfsheimer/py-socket-server.git#egg=py-socket-server"
-      ])
+          "py-socket-server"])

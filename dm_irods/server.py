@@ -8,10 +8,6 @@ from irods_session import iRODS
 from config import DmIRodsConfig
 from irods.exception import NetworkException
 from irods.exception import RULE_FAILED_ERR
-sys.path.insert(0,
-                os.path.join(
-                    os.path.dirname(os.path.dirname(__file__)),
-                    "py-socket-server"))
 from socket_server import Server
 from socket_server import ReturnCode
 
@@ -249,28 +245,28 @@ class DmIRodsServer(Server):
                      "msg": "invalid type: %s" % s})
 
     def process_list(self, obj):
-        irods = iRODS(logger=self.logger, **self.config['irods'])
-        missing_tickets = {}
-        ticket_list = self.tickets.values()
-        ticket_list.sort(key=lambda x: x.time_created)
-        for ticket in ticket_list:
-            filename = ticket.remote_file.format(zone=irods.session.zone,
-                                                 user=irods.session.username)
-            missing_tickets[filename] = ticket
-        for obj in irods.list_objects():
-            filename = obj.get('collection', '') + '/' + obj.get('object')
-            if filename in missing_tickets:
-                for k, v in missing_tickets[filename].to_dict().items():
+        with iRODS(logger=self.logger, **self.config['irods']) as irods:
+            missing_tickets = {}
+            ticket_list = self.tickets.values()
+            ticket_list.sort(key=lambda x: x.time_created)
+            for ticket in ticket_list:
+                filename = ticket.remote_file.format(zone=irods.session.zone,
+                                                     user=irods.session.username)
+                missing_tickets[filename] = ticket
+            for obj in irods.list_objects():
+                filename = obj.get('collection', '') + '/' + obj.get('object')
+                if filename in missing_tickets:
+                    for k, v in missing_tickets[filename].to_dict().items():
+                        obj[k] = v
+                    del missing_tickets[filename]
+                yield ReturnCode.OK, json.dumps(obj)
+            for p, ticket in missing_tickets.items():
+                obj = {"object": os.path.basename(p),
+                       "collection": os.path.dirname(p),
+                       "meta": {'SURF-DMF': "???"}}
+                for k, v in ticket.to_dict().items():
                     obj[k] = v
-                del missing_tickets[filename]
-            yield ReturnCode.OK, json.dumps(obj)
-        for p, ticket in missing_tickets.items():
-            obj = {"object": os.path.basename(p),
-                   "collection": os.path.dirname(p),
-                   "meta": {'SURF-DMF': "???"}}
-            for k, v in ticket.to_dict().items():
-                obj[k] = v
-            yield ReturnCode.OK, json.dumps(obj)
+                yield ReturnCode.OK, json.dumps(obj)
 
     def register_ticket(self, local_file, remote_file, mode):
         p = (local_file, remote_file)
@@ -356,69 +352,69 @@ class DmIRodsServer(Server):
                     self._tick_upload(p, ticket)
 
     def _tick_download(self, p, ticket):
-        irods = iRODS(logger=self.logger, **self.config['irods'])
-        try:
-            self.logger.info('get %s -> %s' % (p[1], p[0]))
-            self.tickets[p].status = Ticket.GETTING
-            irods.get(ticket)
-            self.logger.info('done %s -> %s' % (p[1], p[0]))
-            self.tickets[p].status = Ticket.DONE
-            del self.active_tickets[p]
-            self.update_ticket(p[0], p[1])
-        except RULE_FAILED_ERR as e:
-            self.logger.debug('failed rule %s', str(e))
-        except NetworkException as e:
-            self.tickets[p].status == Ticket.RETRY
-            if self.tickets[p].retries > 0:
-                self.logger.warning('failed to get %s -> %s,' +
-                                    'remaining %d trials',
-                                    (p[1], p[0]),
-                                    self.tickets[p].retries)
-                self.tickets[p].retries -= 1
+        with iRODS(logger=self.logger, **self.config['irods']) as irods:
+            try:
+                self.logger.info('get %s -> %s' % (p[1], p[0]))
+                self.tickets[p].status = Ticket.GETTING
+                irods.get(ticket)
+                self.logger.info('done %s -> %s' % (p[1], p[0]))
+                self.tickets[p].status = Ticket.DONE
+                del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
-            else:
+            except RULE_FAILED_ERR as e:
+                self.logger.debug('failed rule %s', str(e))
+            except NetworkException as e:
+                self.tickets[p].status == Ticket.RETRY
+                if self.tickets[p].retries > 0:
+                    self.logger.warning('failed to get %s -> %s,' +
+                                        'remaining %d trials',
+                                        (p[1], p[0]),
+                                        self.tickets[p].retries)
+                    self.tickets[p].retries -= 1
+                    self.update_ticket(p[0], p[1])
+                else:
+                    self.logger.error('failed to get %s -> %s', (p[1], p[0]))
+                    self._log_exception(e, traceback.format_exc())
+                    self.tickets[p].status = Ticket.ERROR
+                    del self.active_tickets[p]
+                    self.update_ticket(p[0], p[1])
+            except Exception as e:
                 self.logger.error('failed to get %s -> %s', (p[1], p[0]))
                 self._log_exception(e, traceback.format_exc())
                 self.tickets[p].status = Ticket.ERROR
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
-        except Exception as e:
-            self.logger.error('failed to get %s -> %s', (p[1], p[0]))
-            self._log_exception(e, traceback.format_exc())
-            self.tickets[p].status = Ticket.ERROR
-            del self.active_tickets[p]
-            self.update_ticket(p[0], p[1])
 
     def _tick_upload(self, p, ticket):
-        irods = iRODS(logger=self.logger, **self.config['irods'])
-        try:
-            self.logger.info('put %s -> %s', p[0], p[1])
-            self.tickets[p].status = Ticket.PUTTING
-            irods.put(ticket)
-            self.logger.info('done %s -> %s', p[0], p[1])
-            self.tickets[p].status = Ticket.DONE
-            del self.active_tickets[p]
-            self.update_ticket(p[0], p[1])
-        except NetworkException as e:
-            self.put_tickets[p].status == Ticket.RETRY
-            if self.tickets[p].retries > 0:
-                self.logger.warning('failed to put %s -> %s,' +
-                                    'remaining %d trials',
-                                    p[0], p[1], self.tickets[p].retries)
-                self.tickets[p].retries -= 1
+        with iRODS(logger=self.logger, **self.config['irods']) as irods:
+            try:
+                self.logger.info('put %s -> %s', p[0], p[1])
+                self.tickets[p].status = Ticket.PUTTING
+                irods.put(ticket)
+                self.logger.info('done %s -> %s', p[0], p[1])
+                self.tickets[p].status = Ticket.DONE
+                del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
-            else:
+            except NetworkException as e:
+                self.put_tickets[p].status == Ticket.RETRY
+                if self.tickets[p].retries > 0:
+                    self.logger.warning('failed to put %s -> %s,' +
+                                        'remaining %d trials',
+                                        p[0], p[1], self.tickets[p].retries)
+                    self.tickets[p].retries -= 1
+                    self.update_ticket(p[0], p[1])
+                else:
+                    self.logger.error('failed to put %s -> %s', p[0], p[1])
+                    self._log_exception(e, traceback.format_exc())
+                    self.tickets[p].status = Ticket.ERROR
+                    del self.active_tickets[p]
+                    self.update_ticket(p[0], p[1])
+            except Exception as e:
                 self.logger.error('failed to put %s -> %s', p[0], p[1])
                 self._log_exception(e, traceback.format_exc())
                 self.tickets[p].status = Ticket.ERROR
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
-        except Exception as e:
-            self.logger.error('failed to put %s -> %s', p[0], p[1])
-            self._log_exception(e, traceback.format_exc())
-            self.tickets[p].status = Ticket.ERROR
-            del self.active_tickets[p]
-            self.update_ticket(p[0], p[1])
 
     def housekeeping(self):
         curr = time.time()
@@ -426,21 +422,24 @@ class DmIRodsServer(Server):
         if curr - self.last_housekeeping > self.housekeeping_interval:
             self.logger.info('housekeeping')
             try:
-                irods = iRODS(logger=self.logger, **self.config['irods'])
-                tickets = {}
-                for ticket in self.tickets.values():
-                    filename = ticket.remote_file.format(zone=irods.session.zone,
-                                                         user=irods.session.username)
-                    tickets[filename] = ticket
-                for obj in irods.list_objects():
-                    filename = "%s/%s" % (obj.get('collection', ''),
-                                          obj.get('object'))
-                    if filename in self.tickets:
-                        del tickets[filename]
-                for ticket in tickets.values():
-                    age = time.time() - ticket.time_created
-                    if age > keep_seconds:
-                        self.delete_ticket(ticket.local_file, ticket.remote_file)
+                with iRODS(logger=self.logger,
+                           **self.config['irods']) as irods:
+                    tickets = {}
+                    for ticket in self.tickets.values():
+                        zone = irods.session.zone
+                        user = irods.session.username
+                        filename = ticket.remote_file.format(zone=zone,
+                                                             user=user)
+                        tickets[filename] = ticket
+                    for obj in irods.list_objects():
+                        filename = "%s/%s" % (obj.get('collection', ''),
+                                              obj.get('object'))
+                        if filename in self.tickets:
+                            del tickets[filename]
+                    for ticket in tickets.values():
+                        age = time.time() - ticket.time_created
+                        if age > keep_seconds:
+                            self.delete_ticket(ticket.local_file, ticket.remote_file)
             except Exception as e:
                 self.logger.error('housekeeping failed')
                 self._log_exception(e, traceback.format_exc())

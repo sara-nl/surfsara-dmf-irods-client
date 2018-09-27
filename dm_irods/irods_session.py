@@ -18,11 +18,20 @@ class iRODS(object):
         if 'irods_password' in kwargs:
             pw = base64.b64decode(kwargs['irods_password'])
             kwargs['irods_password'] = pw
-        self.session = iRODSSession(connection_timeout=connection_timeout,
-                                    **kwargs)
-        self.session.connection_timeout = connection_timeout
+        self.logger = logger
+        self.kwargs = kwargs
+        self.connection_timeout = connection_timeout
         self.resource_name = resource_name
         self.logger = logger
+
+    def __enter__(self):
+        self.session = iRODSSession(connection_timeout=self.connection_timeout,
+                                    **self.kwargs)
+        self.session.connection_timeout = self.connection_timeout
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.session.cleanup()
 
     def list_objects(self):
         session = self.session

@@ -10,10 +10,6 @@ from server import DmIRodsServer
 from table import Table
 from cprint import print_error
 from config import DmIRodsConfig
-sys.path.insert(0,
-                os.path.join(
-                    os.path.dirname(os.path.dirname(__file__)),
-                    "py-socket-server"))
 from socket_server import ServerApp
 from socket_server import Client
 from socket_server import ReturnCode
