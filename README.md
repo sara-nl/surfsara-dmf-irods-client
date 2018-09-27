@@ -21,12 +21,10 @@ Installation
 
 The client can be installed with pip:
     
-    pip install git+https://github.com/stefan-wolfsheimer/py-socket-server.git#egg=py-socket-server
     pip install git+https://github.com/sara-nl/iRODS_DMF_client.git#egg=irods-dmf-client
 
 or using a virtual environment (recommented)
 
-    pipenv install git+https://github.com/stefan-wolfsheimer/py-socket-server.git#egg=py-socket-server
     pipenv install git+https://github.com/sara-nl/iRODS_DMF_client.git#egg=irods-dmf-client
 
 Usage
