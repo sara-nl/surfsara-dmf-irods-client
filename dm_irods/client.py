@@ -179,9 +179,19 @@ def dm_iput(argv=sys.argv[1:]):
 
 
 def dm_ilist(argv=sys.argv[1:]):
+    parser = ArgumentParser(description='List files in archive.')
+    help_format = ('Configure columns to be displayed' +
+                   'Examples:\n' +
+                   'dmf,time,status,mod,file,local_file (default)\n' +
+                   'dmf,time,status,mod,file:20,local_file:20')
+    parser.add_argument('--format',
+                        type=str,
+                        default='dmf,time,status,mod,file,local_file',
+                        help=help_format)
+    args = parser.parse_args(argv)
     ensure_daemon_is_running()
     client = Client(DmIRodsServer.get_socket_file())
-    table = Table()
+    table = Table(format=args.format)
     for code, result in client.request_all({"list": True,
                                             "all": True}):
         if code != ReturnCode.OK:

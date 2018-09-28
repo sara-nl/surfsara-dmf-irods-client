@@ -6,7 +6,6 @@ from irods.models import DataObject
 from irods.models import DataObjectMeta
 from irods.models import Resource
 from irods.column import Like
-import irods.keywords as kw
 
 
 class iRODS(object):
@@ -75,8 +74,8 @@ class iRODS(object):
         with open(ticket.local_file, 'r') as fin:
             with self.session.data_objects.open(target, 'w') as fout:
                 while True:
-                      chunk = fin.read(1024)
-                      if chunk:
-                          fout.write(chunk)
-                      else:
-                          break
+                    chunk = fin.read(1024)
+                    if chunk:
+                        fout.write(chunk)
+                    else:
+                        break

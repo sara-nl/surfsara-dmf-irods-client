@@ -1,4 +1,3 @@
-import sys
 import os
 import logging
 import json
@@ -250,8 +249,9 @@ class DmIRodsServer(Server):
             ticket_list = self.tickets.values()
             ticket_list.sort(key=lambda x: x.time_created)
             for ticket in ticket_list:
-                filename = ticket.remote_file.format(zone=irods.session.zone,
-                                                     user=irods.session.username)
+                zone = irods.session.zone
+                user = irods.session.username
+                filename = ticket.remote_file.format(zone=zone, user=user)
                 missing_tickets[filename] = ticket
             for obj in irods.list_objects():
                 filename = obj.get('collection', '') + '/' + obj.get('object')
@@ -439,7 +439,8 @@ class DmIRodsServer(Server):
                     for ticket in tickets.values():
                         age = time.time() - ticket.time_created
                         if age > keep_seconds:
-                            self.delete_ticket(ticket.local_file, ticket.remote_file)
+                            self.delete_ticket(ticket.local_file,
+                                               ticket.remote_file)
             except Exception as e:
                 self.logger.error('housekeeping failed')
                 self._log_exception(e, traceback.format_exc())

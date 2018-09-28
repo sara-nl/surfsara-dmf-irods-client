@@ -34,34 +34,44 @@ def get_term_size():
     return int(cr[1]), int(cr[0])
 
 
+def split_format_item(item):
+    item = item.split(':')
+    if len(item) == 1:
+        return {'header': item[0].upper()}
+    else:
+        return {'header': item[0].upper(), 'width': int(item[1])}
+
+
 class Table(object):
-    def __init__(self):
-        self.header_written = False
+    def __init__(self, format='dmf,time,status,mod,file,local_file'):
+        self.fields = [split_format_item(item)
+                       for item in format.split(',')]
         self.term_size = get_term_size()
-        self.fields = [
-            {'field': 'SURF-DMF',
-             'width': 4,
-             'header': 'DMF',
-             'formatter': self.format_surf_dmf},
-            {'field': 'time',
-             'width':  20,
-             'header': 'TIME',
-             'formatter': self.format_time},
-            {'field': 'status',
-             'width':  11,
-             'header': 'STATUS',
-             'formatter': self.format_status},
-            {'field': 'mode',
-             'width':  4,
-             'header': 'MOD'},
-            {'field': 'file',
-             'min_width': 20,
-             'header': 'FILE',
-             'formatter': self.format_file},
-            {'field': 'local_file',
-             'min_width': 20,
-             'header': 'LOCAL_FILE',
-             'formatter': self.format_local_file}]
+        self.header_written = False
+        field_config = {
+            'DMF': {'field': 'SURF-DMF',
+                    'width': 4,
+                    'formatter': self.format_surf_dmf},
+            'TIME': {'field': 'time',
+                     'width':  20,
+                     'formatter': self.format_time},
+            'STATUS': {'field': 'status',
+                       'width':  11,
+                       'formatter': self.format_status},
+            'MOD': {'field': 'mode',
+                    'width':  4},
+            'FILE': {'field': 'file',
+                     'min_width': 20,
+                     'formatter': self.format_file},
+            'LOCAL_FILE': {'field': 'local_file',
+                           'min_width': 20,
+                           'formatter': self.format_local_file}
+        }
+        for item in self.fields:
+            overlay = field_config.get(item['header'], {})
+            for k, v in overlay.items():
+                if k not in item:
+                    item[k] = v
         total_width = sum([f.get('width', 0)
                            for f in self.fields])
         missing_columns = sum([0 if 'width' in f else 1
