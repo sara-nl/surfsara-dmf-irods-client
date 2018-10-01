@@ -1,8 +1,11 @@
+import io
 import os
 import logging
 import json
 import traceback
 import time
+import hashlib
+import base64
 from irods_session import iRODS
 from config import DmIRodsConfig
 from irods.exception import NetworkException
@@ -48,6 +51,7 @@ class Ticket(object):
         self.mode = mode
         self.local_file = local_file
         self.remote_file = remote_file
+        self.checksum = None
         self.retries = retries
         if time_created is None:
             self.time_created = time.time()
@@ -97,6 +101,7 @@ class Ticket(object):
                 "status": Ticket.status_to_string(self.status),
                 "mode": Ticket.mode_to_string(self.mode),
                 "time_created": self.time_created,
+                "checksum:": self.checksum,
                 "retries": self.retries}
 
     def to_json(self):
@@ -109,7 +114,8 @@ class Ticket(object):
                   'status',
                   'mode',
                   'time_created',
-                  'retries']
+                  'retries',
+                  'checksum']
         cobj = {str(k): str(value)
                 for k, value in obj.items()
                 if str(k) in fields}
@@ -139,6 +145,8 @@ class DmIRodsServer(Server):
         kwargs['tick_sec'] = DmIRodsServer.TICK_INTERVAL
         super(DmIRodsServer, self).__init__(DmIRodsServer.get_socket_file(),
                                             **kwargs)
+        config = DmIRodsConfig(logger=self.logger)
+        config.ensure_configured()
         self.ticket_dir = os.path.join(os.path.expanduser("~"),
                                        ".DmIRodsServer",
                                        "Tickets")
@@ -154,6 +162,19 @@ class DmIRodsServer(Server):
         if not self.dm_irods_config.is_configured:
             raise RuntimeError('failed to read config from %s' %
                                self.dm_irods_config.config_file)
+
+    def irods_connection(self):
+        return iRODS(logger=self.logger, **self.config['irods'])
+
+    def sha256_checksum(self, filename, block_size=65536):
+        def chunks(f, chunksize=io.DEFAULT_BUFFER_SIZE):
+            return iter(lambda: f.read(chunksize), b'')
+
+        hasher = hashlib.sha256()
+        with open(filename, 'rb') as f:
+            for chunk in chunks(f):
+                hasher.update(chunk)
+        return base64.b64encode(hasher.digest())
 
     def read_tickets(self):
         for root, dirs, files in os.walk(self.ticket_dir):
@@ -244,7 +265,7 @@ class DmIRodsServer(Server):
                      "msg": "invalid type: %s" % s})
 
     def process_list(self, obj):
-        with iRODS(logger=self.logger, **self.config['irods']) as irods:
+        with self.irods_connection() as irods:
             missing_tickets = {}
             ticket_list = self.tickets.values()
             ticket_list.sort(key=lambda x: x.time_created)
@@ -352,7 +373,7 @@ class DmIRodsServer(Server):
                     self._tick_upload(p, ticket)
 
     def _tick_download(self, p, ticket):
-        with iRODS(logger=self.logger, **self.config['irods']) as irods:
+        with self.irods_connection() as irods:
             try:
                 self.logger.info('get %s -> %s' % (p[1], p[0]))
                 self.tickets[p].status = Ticket.GETTING
@@ -386,8 +407,16 @@ class DmIRodsServer(Server):
                 self.update_ticket(p[0], p[1])
 
     def _tick_upload(self, p, ticket):
-        with iRODS(logger=self.logger, **self.config['irods']) as irods:
+        with self.irods_connection() as irods:
             try:
+                if not os.path.isfile(self.tickets[p].local_file):
+                    raise IOError('file %s does not exist' %
+                                  self.tickets[p].local_file)
+                checksum = self.sha256_checksum(self.tickets[p].local_file)
+                self.tickets[p].checksum = checksum
+                self.logger.info('chcksum %s:%s',
+                                 self.tickets[p].local_file,
+                                 checksum)
                 self.logger.info('put %s -> %s', p[0], p[1])
                 self.tickets[p].status = Ticket.PUTTING
                 irods.put(ticket)
@@ -422,8 +451,7 @@ class DmIRodsServer(Server):
         if curr - self.last_housekeeping > self.housekeeping_interval:
             self.logger.info('housekeeping')
             try:
-                with iRODS(logger=self.logger,
-                           **self.config['irods']) as irods:
+                with self.irods_connection() as irods:
                     tickets = {}
                     for ticket in self.tickets.values():
                         zone = irods.session.zone
