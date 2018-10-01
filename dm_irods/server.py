@@ -36,6 +36,14 @@ class Ticket(object):
                    6: "UNDEF",
                    7: "ERROR",
                    8: "RETRY"}
+    sorted_codes = [WAITING,
+                    GETTING,
+                    PUTTING,
+                    RETRY,
+                    CANCELED,
+                    ERROR,
+                    UNDEF,
+                    DONE]
     mode2string = {0: "",
                    1: "GET",
                    2: "PUT"}
@@ -265,29 +273,53 @@ class DmIRodsServer(Server):
                      "msg": "invalid type: %s" % s})
 
     def process_list(self, obj):
+        limit = obj.get('limit', None)
+        if limit is None:
+            limit = 1000000000
+        self.logger.info(limit)
         with self.irods_connection() as irods:
             missing_tickets = {}
             ticket_list = self.tickets.values()
             ticket_list.sort(key=lambda x: x.time_created)
+            ticket_stat = {k: 0 for k in Ticket.sorted_codes}
             for ticket in ticket_list:
                 zone = irods.session.zone
                 user = irods.session.username
                 filename = ticket.remote_file.format(zone=zone, user=user)
                 missing_tickets[filename] = ticket
-            for obj in irods.list_objects():
-                filename = obj.get('collection', '') + '/' + obj.get('object')
-                if filename in missing_tickets:
-                    for k, v in missing_tickets[filename].to_dict().items():
-                        obj[k] = v
-                    del missing_tickets[filename]
-                yield ReturnCode.OK, json.dumps(obj)
+                ticket_stat[ticket.status] += 1
+
+            code_list = [code for code, num in ticket_stat.items() if num > 0]
+            code_list += [0]
+            for code in code_list:
+                for obj in irods.list_objects():
+                    filename = (obj.get('collection', '') +
+                                '/' +
+                                obj.get('object'))
+                    if filename in missing_tickets:
+                        if missing_tickets[filename].status == code:
+                            tmp = missing_tickets[filename].to_dict()
+                            for k, v in tmp.items():
+                                obj[k] = v
+                            del missing_tickets[filename]
+                            limit -= 1
+                            yield ReturnCode.OK, json.dumps(obj)
+                    else:
+                        limit -= 1
+                        yield ReturnCode.OK, json.dumps(obj)
+                    if limit <= 0:
+                        break
+
             for p, ticket in missing_tickets.items():
                 obj = {"object": os.path.basename(p),
                        "collection": os.path.dirname(p),
                        "meta": {'SURF-DMF': "???"}}
                 for k, v in ticket.to_dict().items():
                     obj[k] = v
+                limit -= 1
                 yield ReturnCode.OK, json.dumps(obj)
+                if limit <= 0:
+                    break
 
     def register_ticket(self, local_file, remote_file, mode):
         p = (local_file, remote_file)

@@ -94,9 +94,13 @@ class iRODS(object):
         self.logger.info('checksum %s', chcksum)
         with open(ticket.local_file, 'r') as fin:
             options = {kw.REG_CHKSUM_KW: ''}
+            size = 0
             with self.session.data_objects.open(target, 'w',
                                                 **options) as fout:
                 while True:
+                    if size % (1024 * 1024) == 0:
+                        self.logger.info('sent %3.1f MB', (size / 1024 / 1024))
+                    size += 1024
                     chunk = fin.read(1024)
                     if chunk:
                         fout.write(chunk)

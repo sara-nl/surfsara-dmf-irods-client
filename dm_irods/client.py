@@ -188,12 +188,16 @@ def dm_ilist(argv=sys.argv[1:]):
                         type=str,
                         default='dmf,time,status,mod,file,local_file',
                         help=help_format)
+    parser.add_argument('--limit',
+                        type=int,
+                        help='limit number of items to be listed')
     args = parser.parse_args(argv)
     ensure_daemon_is_running()
     client = Client(DmIRodsServer.get_socket_file())
     table = Table(format=args.format)
     for code, result in client.request_all({"list": True,
-                                            "all": True}):
+                                            "all": True,
+                                            "limit": args.limit}):
         if code != ReturnCode.OK:
             print_request_error(code, result)
             sys.exit(8)
