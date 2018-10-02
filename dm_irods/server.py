@@ -211,7 +211,8 @@ class DmIRodsServer(Server):
         self.zone = cfg['irods_zone_name']
         self.user = cfg['irods_user_name']
         self.resource = self.config.get('irods', {}).get('resource_name', '')
-
+        self.stop_timeout = self.config.get('stop_timeout', 0) * 60
+        self.heartbeat = time.time()
         if not self.dm_irods_config.is_configured:
             raise RuntimeError('failed to read config from %s' %
                                self.dm_irods_config.config_file)
@@ -243,6 +244,7 @@ class DmIRodsServer(Server):
                     self.logger.info(ticket.to_json())
 
     def process(self, code, data):
+        self.heartbeat = time.time()
         obj = json.loads(data)
         if "get" in obj:
             return self.process_get(obj)
@@ -262,6 +264,7 @@ class DmIRodsServer(Server):
                     ("invalid command %s" % json.dumps(data)))
 
     def process_all(self, code, data):
+        self.heartbeat = time.time()
         obj = json.loads(data)
         if "list" in obj:
             for code, item in self.process_list(obj):
@@ -447,8 +450,7 @@ class DmIRodsServer(Server):
         return ticket
 
     def update_ticket(self, local_file, remote_file):
-        p = (local_file, remote_file)
-        ticket = self.tickets[p]
+        ticket = self.tickets[(local_file, remote_file)]
         with open(os.path.join(self.ticket_dir,
                                ticket.ticket_file), "w") as fp:
             fp.write(ticket.to_json())
@@ -477,12 +479,19 @@ class DmIRodsServer(Server):
             if not self.active:
                 break
             if ticket.status in [Ticket.WAITING, Ticket.RETRY]:
+                self.heartbeat = time.time()
                 if ticket.mode == Ticket.GET:
                     self._tick_download(p, ticket)
                 else:
                     self._tick_upload(p, ticket)
+        if not self.active_tickets and self.stop_timeout > 0:
+            last_heartbeat = time.time() - self.heartbeat
+            if last_heartbeat > self.stop_timeout:
+                self.logger.info('stop daemon due to inactivity')
+                self.active = False
 
     def _tick_download(self, p, ticket):
+        self.heartbeat = time.time()
         with self.irods_connection() as irods:
             try:
                 self.logger.info('get %s -> %s' % (p[1], p[0]))
@@ -515,8 +524,10 @@ class DmIRodsServer(Server):
                 self.tickets[p].status = Ticket.ERROR
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
+        self.heartbeat = time.time()
 
     def _tick_upload(self, p, ticket):
+        self.heartbeat = time.time()
         with self.irods_connection() as irods:
             try:
                 if not os.path.isfile(self.tickets[p].local_file):
@@ -553,6 +564,7 @@ class DmIRodsServer(Server):
                 self.tickets[p].status = Ticket.ERROR
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
+        self.heartbeat = time.time()
 
     def housekeeping(self):
         curr = time.time()

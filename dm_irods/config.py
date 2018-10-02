@@ -90,6 +90,14 @@ class DmIRodsConfig(object):
                             default_value=default_value,
                             return_type=int)
 
+        def _get_stop_timeout(config):
+            default_value = config.get('stop_timeout',
+                                       self.config.get('stop_timeout', 30))
+            return question('stop daemon after being n minutes idle ' +
+                            '(never stop: n=0)',
+                            default_value=default_value,
+                            return_type=int)
+
         if self.is_configured and not force:
             return True
         else:
@@ -104,7 +112,7 @@ class DmIRodsConfig(object):
             cfg['irods']['connection_timeout'] = _get_timeout(config)
             cfg['irods']['resource_name'] = _get_resource_name(config)
             cfg['housekeeping'] = _get_housekeeping(config)
-
+            cfg['stop_timeout'] = _get_stop_timeout(config)
             dirname = os.path.dirname(self.config_file)
             if not os.path.exists(dirname):
                 self.logger.info('mkdir %s', dirname)
