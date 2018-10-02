@@ -12,6 +12,7 @@ setup(name='irods-dmf-client',
                'dm_idaemon',
                'dm_iget',
                'dm_ilist',
+               'dm_iinfo',
                'dm_iput'],
       install_requires=[
           "termcolor",

@@ -1,18 +1,28 @@
 import sys
 import os
+import re
+import time
+import atexit
 import logging
 import json
 import traceback
 import base64
 import getpass
+import datetime
 from argparse import ArgumentParser
 from server import DmIRodsServer
 from table import Table
+from table import get_term_size
 from cprint import print_error
+from cprint import terminal_erase
+from cprint import terminal_home
 from config import DmIRodsConfig
 from socket_server import ServerApp
 from socket_server import Client
 from socket_server import ReturnCode
+
+
+WATCH_DEALY = 2
 
 
 def print_request_error(code, result):
@@ -184,6 +194,7 @@ def dm_ilist(argv=sys.argv[1:]):
                    'Examples:\n' +
                    'dmf,time,status,mod,file,local_file (default)\n' +
                    'dmf,time,status,mod,file:20,local_file:20')
+    help_watch = 'display the list and refresh screen automatically'
     parser.add_argument('--format',
                         type=str,
                         default='dmf,time,status,mod,file,local_file',
@@ -191,14 +202,92 @@ def dm_ilist(argv=sys.argv[1:]):
     parser.add_argument('--limit',
                         type=int,
                         help='limit number of items to be listed')
+    parser.add_argument('--watch', '-w',
+                        action='store_true',
+                        help=help_watch)
     args = parser.parse_args(argv)
     ensure_daemon_is_running()
     client = Client(DmIRodsServer.get_socket_file())
-    table = Table(format=args.format)
-    for code, result in client.request_all({"list": True,
-                                            "all": True,
-                                            "limit": args.limit}):
-        if code != ReturnCode.OK:
-            print_request_error(code, result)
-            sys.exit(8)
-        table.print_row(json.loads(result))
+    if args.watch:
+        terminal_erase()
+        if args.limit is None:
+            (columns, lines) = get_term_size()
+            args.limit = lines - 3
+        atexit.register(terminal_erase)
+    while True:
+        table = Table(format=args.format)
+        for code, result in client.request_all({"list": True,
+                                                "all": True,
+                                                "limit": args.limit}):
+            if code != ReturnCode.OK:
+                print_request_error(code, result)
+                sys.exit(8)
+            table.print_row(json.loads(result))
+        if args.watch:
+            time.sleep(WATCH_DEALY)
+            terminal_home()
+        else:
+            break
+
+
+def dm_iinfo(argv=sys.argv[1:]):
+    def fmt_time(timestamp):
+        time_fmt = '%Y-%m-%d %H:%M:%S'
+        return datetime.datetime.fromtimestamp(timestamp).strftime(time_fmt)
+
+    fields = [{'group': 'Transfer'},
+              {'field': 'retries'},
+              {'field': 'status'},
+              {'field': 'time_created', 'fmt': fmt_time},
+              {'field': 'transferred'},
+              {'field': 'mode'},
+              {'group': 'Local File'},
+              {'field': 'local_file'},
+              {'field': 'local_atime', 'fmt': fmt_time},
+              {'field': 'local_ctime', 'fmt': fmt_time},
+              {'field': 'local_size'},
+              {'field': 'checksum'},
+              {'group': 'Remote Object'},
+              {'field': 'remote_file'},
+              {'field': 'remote_size'},
+              {'field': 'remote_create_time', 'fmt': fmt_time},
+              {'field': 'remote_modify_time', 'fmt': fmt_time},
+              {'field': 'remote_checksum'},
+              {'field': 'collection'},
+              {'field': 'object'},
+              {'field': 'remote_owner_name'},
+              {'field': 'remote_owner_zone'},
+              {'field': 'remote_replica_number'},
+              {'field': 'remote_replica_status'},
+              {'group': 'Remote Meta Data'},
+              {'fieldre': 'meta_.*'}]
+
+    parser = ArgumentParser(description='Get details for object.')
+    parser.add_argument('file', type=str, help='object')
+    args = parser.parse_args(argv)
+    ensure_daemon_is_running()
+    client = Client(DmIRodsServer.get_socket_file())
+    code, result = client.request({"info": args.file})
+    if code != ReturnCode.OK:
+        print_request_error(code, result)
+        sys.exit(8)
+    obj = json.loads(result)
+    fmt = '{0: <%d}{1}' % (max([len(v) for v in obj.keys()]) + 2)
+    for entry in fields:
+        if 'group' in entry:
+            print "--------------------------"
+            print entry.get('group')
+            print "--------------------------"
+        elif 'field' in entry:
+            f = entry.get('field')
+            value = obj.get(f, None)
+            if value is not None:
+                if 'fmt' in entry:
+                    value = entry['fmt'](value)
+                print(fmt.format(f + ':', value))
+        elif 'fieldre' in entry:
+            expr = re.compile(entry.get('fieldre'))
+            for f, value in {k: v
+                             for k, v in obj.items()
+                             if expr.match(k)}.items():
+                print(fmt.format(f + ':', value))

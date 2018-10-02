@@ -62,7 +62,7 @@ class iRODSMock(object):
                         yield {'collection': collection,
                                'object': obj,
                                'resource_value': self.server.resource,
-                               "meta": {'SURF-DMF': state}}
+                               "meta_SURF-DMF": state}
 
     def get(self, ticket):
         local_file = ticket.local_file
@@ -127,14 +127,6 @@ class DmIRodsServerMock(DmIRodsServer):
         if not os.path.exists(self.mockdir):
             self.logger.info("creating directory %s", self.mockdir)
             os.makedirs(self.mockdir)
-        if 'irods_env_file' in self.config.get('irods', {}):
-            with open(self.config['irods']['irods_env_file']) as f:
-                cfg = json.load(f)
-        else:
-            cfg = self.config['irods']
-        self.zone = cfg['irods_zone_name']
-        self.user = cfg['irods_user_name']
-        self.resource = self.config.get('irods', {}).get('resource_name', '')
 
     def irods_connection(self):
         return iRODSMock(self,

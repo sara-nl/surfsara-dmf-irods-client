@@ -14,6 +14,17 @@ from socket_server import Server
 from socket_server import ReturnCode
 
 
+def sha256_checksum(filename, block_size=65536):
+    def chunks(f, chunksize=io.DEFAULT_BUFFER_SIZE):
+        return iter(lambda: f.read(chunksize), b'')
+
+    hasher = hashlib.sha256()
+    with open(filename, 'rb') as f:
+        for chunk in chunks(f):
+            hasher.update(chunk)
+    return base64.b64encode(hasher.digest())
+
+
 class Ticket(object):
     WAITING = 1
     CANCELED = 2
@@ -47,6 +58,16 @@ class Ticket(object):
     mode2string = {0: "",
                    1: "GET",
                    2: "PUT"}
+    fields = ['local_file',
+              'local_atime',
+              'local_ctime',
+              'local_size',
+              'remote_file',
+              'remote_size',
+              'time_created',
+              'retries',
+              'checksum',
+              'transferred']
 
     def __init__(self,
                  local_file,
@@ -54,17 +75,30 @@ class Ticket(object):
                  status=WAITING,
                  mode=NONE,
                  time_created=None,
-                 retries=3):
+                 retries=3,
+                 checksum=None,
+                 local_atime=None,
+                 local_ctime=None,
+                 local_size=None,
+                 remote_size=None,
+                 transferred=0):
         self.status = status
         self.mode = mode
         self.local_file = local_file
         self.remote_file = remote_file
-        self.checksum = None
-        self.retries = retries
+        self.checksum = checksum
+        self.local_atime = local_atime
+        self.local_ctime = local_ctime
+        self.local_size = local_size
+        self.remote_size = remote_size
+        self.transferred = transferred
+        self.retries = int(retries)
         if time_created is None:
             self.time_created = time.time()
         else:
             self.time_created = float(time_created)
+        if mode == Ticket.PUT:
+            self.update_local_attributes()
 
     def is_active(self):
         return (self.status == Ticket.WAITING or
@@ -103,32 +137,34 @@ class Ticket(object):
                 return k
         return None
 
+    def retry(self):
+        self.transferred = 0
+        self.status = Ticket.RETRY
+
+    def update_local_checksum(self):
+        self.checksum = sha256_checksum(self.local_file)
+
+    def update_local_attributes(self):
+        self.local_atime = os.path.getatime(self.local_file)
+        self.local_ctime = os.path.getctime(self.local_file)
+        self.local_size = os.path.getsize(self.local_file)
+
     def to_dict(self):
-        return {"local_file": self.local_file,
-                "remote_file": self.remote_file,
-                "status": Ticket.status_to_string(self.status),
-                "mode": Ticket.mode_to_string(self.mode),
-                "time_created": self.time_created,
-                "checksum:": self.checksum,
-                "retries": self.retries}
+        ret = {f: getattr(self, f) for f in Ticket.fields}
+        ret['status'] = Ticket.status_to_string(self.status)
+        ret['mode'] = Ticket.mode_to_string(self.mode)
+        return ret
 
     def to_json(self):
         return json.dumps(self.to_dict())
 
     @staticmethod
     def from_json(obj):
-        fields = ['local_file',
-                  'remote_file',
-                  'status',
-                  'mode',
-                  'time_created',
-                  'retries',
-                  'checksum']
-        cobj = {str(k): str(value)
+        cobj = {str(k): str(value) if isinstance(value, unicode) else value
                 for k, value in obj.items()
-                if str(k) in fields}
-        cobj['status'] = Ticket.string_to_status(cobj['status'])
-        cobj['mode'] = Ticket.string_to_mode(cobj['mode'])
+                if str(k) in Ticket.fields}
+        cobj['status'] = Ticket.string_to_status(obj['status'])
+        cobj['mode'] = Ticket.string_to_mode(obj['mode'])
         return Ticket(**cobj)
 
 
@@ -167,22 +203,21 @@ class DmIRodsServer(Server):
         self.config = self.dm_irods_config.config
         self.last_housekeeping = time.time()
         self.housekeeping_interval = DmIRodsServer.HOUSEKEEPING_INTERVAL
+        if 'irods_env_file' in self.config.get('irods', {}):
+            with open(self.config['irods']['irods_env_file']) as f:
+                cfg = json.load(f)
+        else:
+            cfg = self.config['irods']
+        self.zone = cfg['irods_zone_name']
+        self.user = cfg['irods_user_name']
+        self.resource = self.config.get('irods', {}).get('resource_name', '')
+
         if not self.dm_irods_config.is_configured:
             raise RuntimeError('failed to read config from %s' %
                                self.dm_irods_config.config_file)
 
     def irods_connection(self):
         return iRODS(logger=self.logger, **self.config['irods'])
-
-    def sha256_checksum(self, filename, block_size=65536):
-        def chunks(f, chunksize=io.DEFAULT_BUFFER_SIZE):
-            return iter(lambda: f.read(chunksize), b'')
-
-        hasher = hashlib.sha256()
-        with open(filename, 'rb') as f:
-            for chunk in chunks(f):
-                hasher.update(chunk)
-        return base64.b64encode(hasher.digest())
 
     def read_tickets(self):
         for root, dirs, files in os.walk(self.ticket_dir):
@@ -194,14 +229,18 @@ class DmIRodsServer(Server):
                     with open(ticket_file) as f:
                         data = json.load(f)
                         ticket = Ticket.from_json(data)
-                        if ticket.mode in [Ticket.GETTING, Ticket.PUTTING]:
-                            ticket.mode = Ticket.RETRY
+                        if ticket.status in [Ticket.GETTING, Ticket.PUTTING]:
+                            ticket.retry()
                             ticket.retries = 3
                         p = (ticket.local_file, ticket.remote_file)
                         self.tickets[p] = ticket
                         if ticket.is_active():
                             self.active_tickets[p] = ticket
-                        self.logger.info(ticket.to_json())
+                    if ticket.mode == Ticket.PUT:
+                        ticket.update_local_attributes()
+                        with open(ticket_file, 'wb') as f:
+                            f.write(ticket.to_json())
+                    self.logger.info(ticket.to_json())
 
     def process(self, code, data):
         obj = json.loads(data)
@@ -209,6 +248,8 @@ class DmIRodsServer(Server):
             return self.process_get(obj)
         elif "put" in obj:
             return self.process_put(obj)
+        elif "info" in obj:
+            return self.process_info(obj)
         elif "password_configured" in obj:
             ret = ('irods_password' in self.config.get('irods', {}) or
                    'irods_authentication_file' in self.config.get('irods', {}))
@@ -233,7 +274,8 @@ class DmIRodsServer(Server):
         remote_file = obj["get"]
         local_file = obj['local_file']
         try:
-            remote_file = remote_file.encode()
+            remote_file = remote_file.encode().format(zone=self.zone,
+                                                      user=self.user)
             local_file = local_file.encode()
         except Exception:
             return (ReturnCode.ERROR, {"code": DmIRodsServer.FAILED,
@@ -255,7 +297,8 @@ class DmIRodsServer(Server):
         local_file = obj['put']
 
         try:
-            remote_file = remote_file.encode()
+            remote_file = remote_file.encode().format(zone=self.zone,
+                                                      user=self.user)
             local_file = local_file.encode()
         except Exception:
             return (ReturnCode.ERROR, {"code": DmIRodsServer.FAILED,
@@ -272,6 +315,31 @@ class DmIRodsServer(Server):
                     {"code": DmIRodsServer.FAILED,
                      "msg": "invalid type: %s" % s})
 
+    def process_info(self, obj):
+        remote_file = obj['info']
+        try:
+            remote_file = remote_file.encode()
+        except Exception:
+            return (ReturnCode.ERROR, {"code": DmIRodsServer.FAILED,
+                                       "msg": "cannot encode unicode"})
+        with self.irods_connection() as irods:
+            obj = os.path.basename(remote_file)
+            coll = os.path.dirname(remote_file)
+            res = next(irods.list_objects({'object': obj,
+                                           'collection': coll}), None)
+            if res is None:
+                return ReturnCode.OK, json.dumps({})
+            else:
+                remote_file = os.path.join(res.get('collection', ''),
+                                           res.get('object', ''))
+                print len(self.tickets.values())
+                for ticket in self.tickets.values():
+                    if ticket.remote_file == str(remote_file):
+                        for k, v in ticket.to_dict().items():
+                            if res.get(k, None) is None:
+                                res[k] = v
+                return ReturnCode.OK, json.dumps(res)
+
     def process_list(self, obj):
         limit = obj.get('limit', None)
         if limit is None:
@@ -283,14 +351,12 @@ class DmIRodsServer(Server):
             ticket_list.sort(key=lambda x: x.time_created)
             ticket_stat = {k: 0 for k in Ticket.sorted_codes}
             for ticket in ticket_list:
-                zone = irods.session.zone
-                user = irods.session.username
-                filename = ticket.remote_file.format(zone=zone, user=user)
-                missing_tickets[filename] = ticket
-                tickets[filename] = ticket
+                missing_tickets[ticket.remote_file] = ticket
+                tickets[ticket.remote_file] = ticket
                 ticket_stat[ticket.status] += 1
 
-            code_list = [code for code, num in ticket_stat.items() if num > 0]
+            code_list = [code for code
+                         in Ticket.sorted_codes if ticket_stat[code] > 0]
             code_list += [0]
             for code in code_list:
                 for obj in irods.list_objects():
@@ -301,7 +367,8 @@ class DmIRodsServer(Server):
                         if tickets[filename].status == code:
                             tmp = tickets[filename].to_dict()
                             for k, v in tmp.items():
-                                obj[k] = v
+                                if obj.get(k, None) is None:
+                                    obj[k] = v
                             if filename in missing_tickets:
                                 del missing_tickets[filename]
                             limit -= 1
@@ -311,11 +378,20 @@ class DmIRodsServer(Server):
                         yield ReturnCode.OK, json.dumps(obj)
                     if limit <= 0:
                         break
+            for item in self._process_missing_list(missing_tickets.values(),
+                                                   limit):
+                yield item
 
-            for p, ticket in missing_tickets.items():
-                obj = {"object": os.path.basename(p),
-                       "collection": os.path.dirname(p),
-                       "meta": {'SURF-DMF': "???"}}
+    def _process_missing_list(self, missing_tickets, limit):
+        def sort_key(x):
+            return Ticket.sorted_codes.index(x.status)
+
+        if limit > 0:
+            missing_tickets.sort(key=sort_key, reverse=False)
+            for ticket in missing_tickets:
+                obj = {"object": os.path.basename(ticket.remote_file),
+                       "collection": os.path.dirname(ticket.remote_file),
+                       "meta_SURF-DMF": '???'}
                 for k, v in ticket.to_dict().items():
                     obj[k] = v
                 limit -= 1
@@ -446,11 +522,10 @@ class DmIRodsServer(Server):
                 if not os.path.isfile(self.tickets[p].local_file):
                     raise IOError('file %s does not exist' %
                                   self.tickets[p].local_file)
-                checksum = self.sha256_checksum(self.tickets[p].local_file)
-                self.tickets[p].checksum = checksum
+                self.tickets[p].update_local_checksum()
                 self.logger.info('chcksum %s:%s',
                                  self.tickets[p].local_file,
-                                 checksum)
+                                 self.tickets[p].checksum)
                 self.logger.info('put %s -> %s', p[0], p[1])
                 self.tickets[p].status = Ticket.PUTTING
                 irods.put(ticket)
@@ -459,7 +534,7 @@ class DmIRodsServer(Server):
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
             except NetworkException as e:
-                self.put_tickets[p].status == Ticket.RETRY
+                self.tickets[p].status == Ticket.RETRY
                 if self.tickets[p].retries > 0:
                     self.logger.warning('failed to put %s -> %s,' +
                                         'remaining %d trials',
@@ -488,11 +563,7 @@ class DmIRodsServer(Server):
                 with self.irods_connection() as irods:
                     tickets = {}
                     for ticket in self.tickets.values():
-                        zone = irods.session.zone
-                        user = irods.session.username
-                        filename = ticket.remote_file.format(zone=zone,
-                                                             user=user)
-                        tickets[filename] = ticket
+                        tickets[ticket.remote_file] = ticket
                     for obj in irods.list_objects():
                         filename = "%s/%s" % (obj.get('collection', ''),
                                               obj.get('object'))

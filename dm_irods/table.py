@@ -49,14 +49,13 @@ class Table(object):
         self.term_size = get_term_size()
         self.header_written = False
         field_config = {
-            'DMF': {'field': 'SURF-DMF',
-                    'width': 4,
-                    'formatter': self.format_surf_dmf},
+            'DMF': {'field': 'meta_SURF-DMF',
+                    'width': 4},
             'TIME': {'field': 'time',
                      'width':  20,
                      'formatter': self.format_time},
             'STATUS': {'field': 'status',
-                       'width':  11,
+                       'width':  15,
                        'formatter': self.format_status},
             'MOD': {'field': 'mode',
                     'width':  4},
@@ -102,11 +101,6 @@ class Table(object):
             filename = '...' + filename[-n:]
         return field.get('fmt').format(filename)
 
-    def format_surf_dmf(self, field, obj):
-        return field.get('fmt').format(obj.get('meta',
-                                               {}).get('SURF-DMF',
-                                                       ''))
-
     def format_time(self, field, obj):
         time_fmt = '%Y-%m-%d %H:%M:%S'
         if 'time_created' in obj:
@@ -117,8 +111,26 @@ class Table(object):
         return field.get('fmt').format(dtg)
 
     def format_status(self, field, obj):
+        def format_percentage(txt, current, total):
+            if total > 0:
+                ret = " % 2.0f%% " % (100 * current / total)
+            else:
+                ret = " 100% "
+            return txt[:-len(ret)] + ret
+
         status = obj.get('status', '')
-        txt = field.get('fmt').format(obj.get('status', ''))
+        mode = obj.get('mode')
+        txt = field.get('fmt').format(status)
+        if mode == 'PUT' and 'transferred' in obj:
+            if obj.get('local_size', None) is not None:
+                txt = format_percentage(txt,
+                                        int(obj.get('transferred', 0)),
+                                        int(obj.get('local_size')))
+        elif mode == 'GET' and 'transferred' in obj:
+            if obj.get('remote_size', None) is not None:
+                txt = format_percentage(txt,
+                                        int(obj.get('transferred', 0)),
+                                        int(obj.get('remote_size')))
         status_formatter = {"WAITING": format_bold,
                             "CANCELED": format_warning,
                             "GETTING": format_processing,

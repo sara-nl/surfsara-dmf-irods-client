@@ -59,3 +59,11 @@ def format_bold(st):
 
 def print_error(st, box=False):
     print(format_error(st, box=box))
+
+
+def terminal_erase():
+    print('\u001Bc'.decode('unicode_escape'))
+
+
+def terminal_home():
+    print('\u001B[H'.decode('unicode_escape'))
