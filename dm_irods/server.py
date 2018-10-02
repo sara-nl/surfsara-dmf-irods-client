@@ -276,9 +276,9 @@ class DmIRodsServer(Server):
         limit = obj.get('limit', None)
         if limit is None:
             limit = 1000000000
-        self.logger.info(limit)
         with self.irods_connection() as irods:
             missing_tickets = {}
+            tickets = {}
             ticket_list = self.tickets.values()
             ticket_list.sort(key=lambda x: x.time_created)
             ticket_stat = {k: 0 for k in Ticket.sorted_codes}
@@ -287,6 +287,7 @@ class DmIRodsServer(Server):
                 user = irods.session.username
                 filename = ticket.remote_file.format(zone=zone, user=user)
                 missing_tickets[filename] = ticket
+                tickets[filename] = ticket
                 ticket_stat[ticket.status] += 1
 
             code_list = [code for code, num in ticket_stat.items() if num > 0]
@@ -296,15 +297,16 @@ class DmIRodsServer(Server):
                     filename = (obj.get('collection', '') +
                                 '/' +
                                 obj.get('object'))
-                    if filename in missing_tickets:
-                        if missing_tickets[filename].status == code:
-                            tmp = missing_tickets[filename].to_dict()
+                    if filename in tickets:
+                        if tickets[filename].status == code:
+                            tmp = tickets[filename].to_dict()
                             for k, v in tmp.items():
                                 obj[k] = v
-                            del missing_tickets[filename]
+                            if filename in missing_tickets:
+                                del missing_tickets[filename]
                             limit -= 1
                             yield ReturnCode.OK, json.dumps(obj)
-                    else:
+                    elif code == 0:
                         limit -= 1
                         yield ReturnCode.OK, json.dumps(obj)
                     if limit <= 0:
