@@ -17,5 +17,4 @@ setup(name='irods-dmf-client',
                'dm_icomplete'],
       install_requires=[
           "termcolor",
-          "python-irodsclient",
-          "py-socket-server"])
+          "python-irodsclient"])
