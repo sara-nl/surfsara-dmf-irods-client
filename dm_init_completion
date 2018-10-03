@@ -1,5 +1,0 @@
-#!/bin/bash
-DIR=$(dirname $(readlink -f $0))
-
-echo complete -C $DIR/dm_icomplete $DIR/dm_iget $DIR/dm_iinfo
-complete -C $DIR/dm_icomplete dm_iget dm_iinfo

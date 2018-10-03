@@ -52,6 +52,9 @@ class DmIRodsConfig(object):
         self.config_file = os.path.join(os.path.expanduser("~"),
                                         ".DmIRodsServer",
                                         "config.json")
+        self.completion_file = os.path.join(os.path.expanduser("~"),
+                                            ".DmIRodsServer",
+                                            "completion.sh")
         if os.path.isfile(self.config_file):
             self.is_configured = True
             self.logger.info('read config file %s', self.config_file)
@@ -122,7 +125,16 @@ class DmIRodsConfig(object):
                 self.logger.info(line)
             with open(self.config_file, "wr") as fp:
                 fp.write(json.dumps(cfg, indent=4))
+            self.configure_completion_file()
 
+    def configure_completion_file(self):
+        self.logger.info('configure completion file %s',
+                         self.completion_file)
+        self.logger.info("type 'source %s' to enable tab completion",
+                         self.completion_file)
+        with open(self.completion_file, "w") as fp:
+            fp.write("complete -C dm_icomplete dm_iget dm_iinfo\n")
+                                            
     def configure_env_file(self, config):
         def_env_file = os.path.join(os.path.expanduser("~"),
                                     ".irods",
