@@ -237,6 +237,23 @@ def dm_ilist(argv=sys.argv[1:]):
             break
 
 
+def dm_icomplete(argv=sys.argv[1:]):
+    app = ServerApp(DmIRodsServer,
+                    socket_file=DmIRodsServer.get_socket_file(),
+                    verbose=False)
+    config = DmIRodsConfig(logger=app.logger)
+    if not config.is_configured:
+        return
+    if app.status().status == 'NOT RUNNING':
+        return
+    client = Client(DmIRodsServer.get_socket_file())
+    for code, result in client.request_all({"completion_list": True}):
+        if code != ReturnCode.OK:
+            print_request_error(code, result)
+            sys.exit(8)
+        print(result)
+
+
 def dm_iinfo(argv=sys.argv[1:]):
     def fmt_time(timestamp):
         time_fmt = '%Y-%m-%d %H:%M:%S'
@@ -270,7 +287,9 @@ def dm_iinfo(argv=sys.argv[1:]):
               {'fieldre': 'meta_.*'}]
 
     parser = ArgumentParser(description='Get details for object.')
-    parser.add_argument('file', type=str, help='object')
+    parser.add_argument('file',
+                        type=str,
+                        help='object')
     args = parser.parse_args(argv)
     ensure_daemon_is_running()
     client = Client(DmIRodsServer.get_socket_file())

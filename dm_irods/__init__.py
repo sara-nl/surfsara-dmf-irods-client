@@ -12,4 +12,5 @@ dm_iput = client.dm_iput
 dm_ilist = client.dm_ilist
 dm_iconfig = client.dm_iconfig
 dm_iinfo = client.dm_iinfo
+dm_icomplete = client.dm_icomplete
 iRODS = irods_session.iRODS

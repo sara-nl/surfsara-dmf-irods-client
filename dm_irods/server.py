@@ -216,6 +216,10 @@ class DmIRodsServer(Server):
         if not self.dm_irods_config.is_configured:
             raise RuntimeError('failed to read config from %s' %
                                self.dm_irods_config.config_file)
+        # managing remote completion list
+        self.completion_list = []
+        self.completion_list_updated = 0
+        self.completion_list_timeout = 60
 
     def irods_connection(self):
         return iRODS(logger=self.logger, **self.config['irods'])
@@ -268,6 +272,9 @@ class DmIRodsServer(Server):
         obj = json.loads(data)
         if "list" in obj:
             for code, item in self.process_list(obj):
+                yield code, item
+        elif "completion_list" in obj:
+            for code, item in self.process_completion_list(obj):
                 yield code, item
         else:
             yield (ReturnCode.ERROR,
@@ -401,6 +408,20 @@ class DmIRodsServer(Server):
                 yield ReturnCode.OK, json.dumps(obj)
                 if limit <= 0:
                     break
+
+    def process_completion_list(self, obj):
+        now = time.time()
+        age = now - self.completion_list_updated
+        if age > self.completion_list_timeout:
+            self.completion_list = []
+            self.completion_list_updated = now
+            with self.irods_connection() as irods:
+                for obj in irods.list_objects():
+                    filename = "%s/%s" % (obj.get('collection', ''),
+                                          obj.get('object'))
+                    self.completion_list.append(filename)
+        for filename in self.completion_list:
+            yield ReturnCode.OK, filename
 
     def register_ticket(self, local_file, remote_file, mode):
         p = (local_file, remote_file)
