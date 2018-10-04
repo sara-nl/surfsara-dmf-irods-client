@@ -1,0 +1,5 @@
+#!/usr/bin/env python
+from dm_irods.dm_mock import dmput
+
+if __name__ == "__main__":
+    dmput()
