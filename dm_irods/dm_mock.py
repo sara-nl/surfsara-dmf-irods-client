@@ -11,6 +11,18 @@ from socket_server import ReturnCode
 
 
 LS_PATH = '/bin/ls'
+DMATTR_FIELDS = ['bfid',
+                 'emask',
+                 'fhandle',
+                 'flags',
+                 'nregn',
+                 'owner',
+                 'path',
+                 'projid',
+                 'sitetag',
+                 'size',
+                 'space',
+                 'state']
 
 
 def ensure_daemon_is_running():
@@ -21,11 +33,10 @@ def ensure_daemon_is_running():
 
 
 def ls_inode_object(path):
-    mode = os.stat(path)
     socket_file = DmMockServer.get_socket_file()
     client = Client(socket_file)
     code, result = client.request({"op": "ls",
-                                   "inode": mode.st_ino})
+                                   "path": path})
     if code == ReturnCode.OK:
         return json.loads(result)
     else:
@@ -34,11 +45,10 @@ def ls_inode_object(path):
 
 
 def get_inode_object(path):
-    mode = os.stat(path)
     socket_file = DmMockServer.get_socket_file()
     client = Client(socket_file)
     code, result = client.request({"op": "get",
-                                   "inode": mode.st_ino})
+                                   "path": path})
     if code == ReturnCode.OK:
         return json.loads(result)
     else:
@@ -47,21 +57,22 @@ def get_inode_object(path):
 
 
 def put_inode_object(p, remove):
-    mode = os.stat(p)
+    # mode = os.stat(p)
+    # "inode": mode.st_ino,
     socket_file = DmMockServer.get_socket_file()
     client = Client(socket_file)
     code, result = client.request({"op": "put",
-                                   "inode": mode.st_ino,
+                                   "path": p,
                                    "remove": remove})
 
 
 def wait_for_states(paths, states):
-    inodes = [os.stat(p).st_ino for p in paths]
+    # inodes = [os.stat(p).st_ino for p in paths]
     socket_file = DmMockServer.get_socket_file()
     client = Client(socket_file)
     while True:
         code, result = client.request({"op": "is_in_state",
-                                       "inodes": inodes,
+                                       "paths": paths,
                                        "states": states})
         if json.loads(result).get('is_in_state'):
             break
@@ -116,8 +127,7 @@ def dmput(argv=sys.argv[1:]):
                         help="remove file locally")
     parser.add_argument("-w", action='store_true', dest='wait',
                         help="wait until all files have been copied")
-    args, unknown = parser.parse_known_args([a for a in argv
-                                             if a not in ['-h', '--help']])
+    args = parser.parse_args(argv)
     ensure_daemon_is_running()
     paths = [os.path.abspath(f) for f in args.files]
     for f in paths:
@@ -131,11 +141,45 @@ def dmget(argv=sys.argv[1:]):
     parser.add_argument('files', type=str, nargs='*')
     parser.add_argument("-q", action='store_true', dest='quit',
                         help="recalls migrated file")
-    args, unknown = parser.parse_known_args([a for a in argv
-                                             if a not in ['-h', '--help']])
+    args = parser.parse_args(argv)
     ensure_daemon_is_running()
     paths = [os.path.abspath(f) for f in args.files]
     for p in paths:
         get_inode_object(p)
     if not args.quit:
         wait_for_states(paths, ['DUL', 'REG'])
+
+
+def dmattr_format_attr(obj):
+    # import pprint
+    # pprint.pprint(obj)
+    line = ''
+    for f in DMATTR_FIELDS:
+        if line:
+            line += ' '
+        line += str(obj.get(f))
+    print(line)
+
+
+def dmattr_long_format_attr(obj):
+    fmt = "{0: >%d} : {1}" % max([len(f) for f in DMATTR_FIELDS])
+    for f in DMATTR_FIELDS:
+        print(fmt.format(f, str(obj.get(f))))
+    print("")
+
+
+def dmattr(argv=sys.argv[1:]):
+    parser = ArgumentParser(description='')
+    parser.add_argument('files', type=str, nargs='*')
+    parser.add_argument("-l", action='store_true', dest='long',
+                        help="long format")
+    args = parser.parse_args(argv)
+    if args.long:
+        formatter = dmattr_long_format_attr
+    else:
+        formatter = dmattr_format_attr
+    ensure_daemon_is_running()
+    for f in args.files:
+        obj = ls_inode_object(os.path.abspath(f))
+        obj['path'] = f
+        formatter(obj)

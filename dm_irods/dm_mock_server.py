@@ -27,6 +27,8 @@ class DmMockServer(Server):
         self.read_data()
         self.default_mig_time = 10
         self.default_unmig_time = 10
+        self.fhandle = os.urandom(32).encode('hex')
+        self.default_owner = 45953
 
     def read_data(self):
         for root, dirs, files in os.walk(DmMockServer.get_dm_data_dir()):
@@ -65,18 +67,19 @@ class DmMockServer(Server):
     def process(self, code, data):
         obj = json.loads(data)
         if obj.get('op') == 'ls':
-            return (ReturnCode.OK, self.ls_inode(obj.get('inode')))
+            return (ReturnCode.OK, self.ls_inode(obj.get('path')))
         elif obj.get('op') == 'get':
-            return (ReturnCode.OK, self.get_inode(obj.get('inode')))
+            return (ReturnCode.OK, self.get_inode(obj.get('path')))
         elif obj.get('op') == 'put':
-            return (ReturnCode.OK, self.put_inode(obj.get('inode'),
+            return (ReturnCode.OK, self.put_inode(obj.get('path'),
                                                   obj.get('remove', False)))
         elif obj.get('op') == 'is_in_state':
             return (ReturnCode.OK,
-                    self.is_in_state(obj.get('inodes'),
+                    self.is_in_state(obj.get('paths'),
                                      obj.get('states')))
 
-    def ls_inode(self, inode):
+    def ls_inode(self, path):
+        inode = os.stat(path).st_ino
         data_path = os.path.join(DmMockServer.get_dm_data_dir(),
                                  "%d.json" % inode)
         if inode in self.inodes:
@@ -84,9 +87,20 @@ class DmMockServer(Server):
         else:
             return {'state': 'REG',
                     'inode': inode,
-                    '_filename': data_path}
+                    '_path': path,
+                    '_filename': data_path,
+                    'bfid': 0,
+                    'fhandle': self.fhandle,
+                    'flags': 0,
+                    'nregn': 0,
+                    'owner': self.default_owner,
+                    'projid': 0,
+                    'sitetag': 0,
+                    'size': 0,
+                    'space': 0}
 
-    def get_inode(self, inode):
+    def get_inode(self, path):
+        inode = os.stat(path).st_ino
         obj = self.ls_inode(inode)
         if obj.get('state') == 'MIG':
             obj['remove'] = False
@@ -97,19 +111,33 @@ class DmMockServer(Server):
             self.update_inode(obj)
         return obj
 
-    def put_inode(self, inode, remove):
-        obj = self.ls_inode(inode)
+    def put_inode(self, path, remove):
+        obj = self.ls_inode(path)
         if obj['state'] == 'REG':
             obj['state'] = 'MIG'
             obj['remove'] = remove
             obj['change_duration'] = self.default_mig_time
+            self.generate_bfid(obj)
             self.update_inode(obj)
         elif obj['state'] == 'DUL' and remove:
             obj['state'] = 'OFL'
             self.update_inode(obj)
         return obj
 
-    def is_in_state(self, inodes, states):
+    def generate_bfid(self, obj):
+        obj['bfid'] = os.urandom(32).encode('hex')
+        obj['emask'] = 17000
+        obj['fhandle'] = self.fhandle
+        obj['flags'] = 0
+        obj['owner'] = self.default_owner
+        obj['nregn'] = 1
+        obj['projid'] = 0
+        obj['sitetag'] = 0
+        obj['size'] = os.stat(obj['_path']).st_size
+        obj['space'] = 0
+
+    def is_in_state(self, paths, states):
+        inodes = [os.stat(path).st_ino for path in paths]
         states = [str(s) for s in states]
         for inode in [self.inodes[ind]
                       for ind in inodes
