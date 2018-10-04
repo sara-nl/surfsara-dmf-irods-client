@@ -50,7 +50,7 @@ class iRODS(object):
                 hasher.update(chunk)
         return base64.b64encode(hasher.digest())
 
-    def list_objects(self, filters={}):
+    def list_objects(self, filters={}, limit=-1):
         session = self.session
         fields = {
             'collection': Collection.name,
@@ -74,6 +74,8 @@ class iRODS(object):
         for k, value in filters.items():
             query = query.filter(fields[k] == value)
         query = query.order_by(Collection.name, DataObject.name)
+        if limit != -1:
+            query = query.limit(limit)
         for item in query.all():
             mquery = session.query(DataObjectMeta.name,
                                    DataObjectMeta.value)

@@ -259,9 +259,25 @@ def dm_iinfo(argv=sys.argv[1:]):
         time_fmt = '%Y-%m-%d %H:%M:%S'
         return datetime.datetime.fromtimestamp(timestamp).strftime(time_fmt)
 
+    def default_printer(v):
+        print(v)
+
+    def print_value(fmt, f, value, printer=default_printer):
+        if printer is None:
+            printer = default_printer
+        if isinstance(value, str) or isinstance(value, unicode):
+            sep = ':'
+            for line in value.split('\n'):
+                printer(fmt.format(f + sep, line))
+                f = ''
+                sep = ' '
+        else:
+            printer(fmt.format(f + ':', value))
+
     fields = [{'group': 'Transfer'},
               {'field': 'retries'},
               {'field': 'status'},
+              {'field': 'errmsg', 'printer': print_error},
               {'field': 'time_created', 'fmt': fmt_time},
               {'field': 'transferred'},
               {'field': 'mode'},
@@ -285,7 +301,6 @@ def dm_iinfo(argv=sys.argv[1:]):
               {'field': 'remote_replica_status'},
               {'group': 'Remote Meta Data'},
               {'fieldre': 'meta_.*'}]
-
     parser = ArgumentParser(description='Get details for object.')
     parser.add_argument('file',
                         type=str,
@@ -298,22 +313,26 @@ def dm_iinfo(argv=sys.argv[1:]):
         print_request_error(code, result)
         sys.exit(8)
     obj = json.loads(result)
+    if not obj:
+        return
     fmt = '{0: <%d}{1}' % (max([len(v) for v in obj.keys()]) + 2)
     for entry in fields:
         if 'group' in entry:
-            print "--------------------------"
-            print entry.get('group')
-            print "--------------------------"
+            print("--------------------------")
+            print(entry.get('group'))
+            print("--------------------------")
         elif 'field' in entry:
             f = entry.get('field')
             value = obj.get(f, None)
             if value is not None:
                 if 'fmt' in entry:
                     value = entry['fmt'](value)
-                print(fmt.format(f + ':', value))
+                print_value(fmt, f, value, printer=entry.get('printer',
+                                                             None))
         elif 'fieldre' in entry:
             expr = re.compile(entry.get('fieldre'))
             for f, value in {k: v
                              for k, v in obj.items()
                              if expr.match(k)}.items():
-                print(fmt.format(f + ':', value))
+                print_value(fmt, f, value, printer=entry.get('printer',
+                                                             None))

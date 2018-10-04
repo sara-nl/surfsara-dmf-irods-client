@@ -133,8 +133,9 @@ class DmIRodsConfig(object):
         self.logger.info("type 'source %s' to enable tab completion",
                          self.completion_file)
         with open(self.completion_file, "w") as fp:
-            fp.write("complete -C dm_icomplete dm_iget dm_iinfo\n")
-                                            
+            fp.write("complete -C dm_icomplete " +
+                     "dm_iget dm_iinfo dm_iget dm_iinfo\n")
+
     def configure_env_file(self, config):
         def_env_file = os.path.join(os.path.expanduser("~"),
                                     ".irods",
