@@ -57,6 +57,23 @@ def format_bold(st):
         return st
 
 
+def format_status(status, txt=None):
+    status_formatter = {"WAITING": format_bold,
+                        "CANCELED": format_warning,
+                        "GETTING": format_processing,
+                        "PUTTING": format_processing,
+                        "DONE": format_done,
+                        "UNDEF": format_error,
+                        "ERROR": format_error,
+                        "RETRY": format_warning}
+    if txt is None:
+        txt = status
+    if status in status_formatter:
+        return status_formatter[status](txt)
+    else:
+        return txt
+
+
 def print_error(st, box=False):
     print(format_error(st, box=box))
 

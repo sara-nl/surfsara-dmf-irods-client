@@ -4,11 +4,8 @@ import os
 import fcntl
 import termios
 import struct
-from cprint import format_error
-from cprint import format_processing
-from cprint import format_warning
-from cprint import format_done
 from cprint import format_bold
+from cprint import format_status
 
 
 def get_term_size():
@@ -49,7 +46,7 @@ class Table(object):
         self.term_size = get_term_size()
         self.header_written = False
         field_config = {
-            'DMF': {'field': 'meta_SURF-DMF',
+            'DMF': {'field': 'DMF_state',
                     'width': 4},
             'TIME': {'field': 'time',
                      'width':  20,
@@ -131,19 +128,7 @@ class Table(object):
                 txt = format_percentage(txt,
                                         int(obj.get('transferred', 0)),
                                         int(obj.get('remote_size')))
-        status_formatter = {"WAITING": format_bold,
-                            "CANCELED": format_warning,
-                            "GETTING": format_processing,
-                            "PUTTING": format_processing,
-                            "DONE": format_done,
-                            "UNDEF": format_error,
-                            "ERROR": format_error,
-                            "RETRY": format_warning}
-        if status in status_formatter:
-            return status_formatter[status](txt)
-        else:
-            return txt
-        return txt
+        return format_status(status, txt)
 
     def print_row(self, obj):
         if not self.header_written:

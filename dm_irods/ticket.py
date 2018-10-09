@@ -61,7 +61,8 @@ class Ticket(object):
               'retries',
               'checksum',
               'transferred',
-              'errmsg']
+              'errmsg',
+              'DMF_state']
 
     def __init__(self,
                  local_file,
@@ -76,7 +77,8 @@ class Ticket(object):
                  local_size=None,
                  remote_size=None,
                  errmsg=None,
-                 transferred=0):
+                 transferred=0,
+                 DMF_state="???"):
         self.status = status
         self.mode = mode
         self.local_file = local_file
@@ -95,6 +97,8 @@ class Ticket(object):
             self.time_created = float(time_created)
         if mode == Ticket.PUT:
             self.update_local_attributes()
+        self.DMF_state = DMF_state
+        self.DMF_bfid = 0
 
     def is_active(self):
         return (self.status == Ticket.WAITING or
@@ -110,6 +114,22 @@ class Ticket(object):
         return (Ticket.mode_to_string(self.mode) + ":" +
                 self.local_file.replace('/', '#') + ".json" +
                 self.remote_file.replace('/', '#') + ".json")
+
+    @property
+    def collection(self):
+        return os.path.dirname(self.remote_file)
+
+    @property
+    def object(self):
+        return os.path.basename(self.remote_file)
+
+    @property
+    def status_str(self):
+        return Ticket.status_to_string(self.status)
+
+    @property
+    def mode_str(self):
+        return Ticket.mode_to_string(self.mode)
 
     @staticmethod
     def status_to_string(status):

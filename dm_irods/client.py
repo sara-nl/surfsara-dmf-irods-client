@@ -16,6 +16,9 @@ from table import get_term_size
 from cprint import print_error
 from cprint import terminal_erase
 from cprint import terminal_home
+from cprint import format_bold
+from cprint import format_status
+from cprint import format_error
 from config import DmIRodsConfig
 from socket_server import ServerApp
 from socket_server import Client
@@ -259,25 +262,46 @@ def dm_iinfo(argv=sys.argv[1:]):
         time_fmt = '%Y-%m-%d %H:%M:%S'
         return datetime.datetime.fromtimestamp(timestamp).strftime(time_fmt)
 
-    def default_printer(v):
-        print(v)
+    def format_progress(progress):
+        return progress
 
-    def print_value(fmt, f, value, printer=default_printer):
-        if printer is None:
-            printer = default_printer
-        if isinstance(value, str) or isinstance(value, unicode):
-            sep = ':'
-            for line in value.split('\n'):
-                printer(fmt.format(f + sep, line))
-                f = ''
-                sep = ' '
-        else:
-            printer(fmt.format(f + ':', value))
+    def print_value(maxlen, f, value, entry={}):
+        colorizer = entry.get('colorizer', None)
+        if 'fmt' in entry:
+            value = entry['fmt'](value)
+        if not isinstance(value, str) and not isinstance(value, unicode):
+            value = str(value)
+        f = format_bold(('{0: <%d}' % maxlen).format(f))
+        sep = ': '
+        for line in value.split('\n'):
+            if colorizer is not None:
+                line = colorizer(line)
+            print(f + sep + line)
+            f = ('{0: <%d}' % maxlen).format('')
+            sep = '  '
+
+    def count_groups(fields, obj):
+        current_group = ''
+        ret = {'': 0}
+        for entry in fields:
+            if 'group' in entry:
+                current_group = entry.get('group')
+                ret[current_group] = 0
+            elif 'field' in entry:
+                f = entry.get('field')
+                if obj.get(f, None) is not None:
+                    ret[current_group] += 1
+            elif 'fieldre' in entry:
+                expr = re.compile(entry.get('fieldre'))
+                ret[current_group] += sum([1 if expr.match(k) else 0
+                                           for k in obj.keys()])
+        return ret
 
     fields = [{'group': 'Transfer'},
               {'field': 'retries'},
-              {'field': 'status'},
-              {'field': 'errmsg', 'printer': print_error},
+              {'field': 'status', 'colorizer': format_status},
+              {'field': 'progress', 'colorizer': format_progress},
+              {'field': 'errmsg', 'colorizer': format_error},
               {'field': 'time_created', 'fmt': fmt_time},
               {'field': 'transferred'},
               {'field': 'mode'},
@@ -299,8 +323,8 @@ def dm_iinfo(argv=sys.argv[1:]):
               {'field': 'remote_owner_zone'},
               {'field': 'remote_replica_number'},
               {'field': 'remote_replica_status'},
-              {'group': 'Remote Meta Data'},
-              {'fieldre': 'meta_.*'}]
+              {'group': 'DMF Data'},
+              {'fieldre': 'DMF_.*'}]
     parser = ArgumentParser(description='Get details for object.')
     parser.add_argument('file',
                         type=str,
@@ -315,24 +339,26 @@ def dm_iinfo(argv=sys.argv[1:]):
     obj = json.loads(result)
     if not obj:
         return
-    fmt = '{0: <%d}{1}' % (max([len(v) for v in obj.keys()]) + 2)
+    maxlen = max([len(v) for v in obj.keys()]) + 2
+    groups = count_groups(fields, obj)
+    current_group = ''
     for entry in fields:
         if 'group' in entry:
-            print("--------------------------")
-            print(entry.get('group'))
-            print("--------------------------")
+            current_group = entry.get('group')
+            if groups.get(current_group, 0) > 0:
+                print("--------------------------")
+                print(current_group)
+                print("--------------------------")
         elif 'field' in entry:
-            f = entry.get('field')
-            value = obj.get(f, None)
-            if value is not None:
-                if 'fmt' in entry:
-                    value = entry['fmt'](value)
-                print_value(fmt, f, value, printer=entry.get('printer',
-                                                             None))
+            if groups.get(current_group, 0) > 0:
+                f = entry.get('field')
+                value = obj.get(f, None)
+                if value is not None:
+                    print_value(maxlen, f, value, entry)
         elif 'fieldre' in entry:
-            expr = re.compile(entry.get('fieldre'))
-            for f, value in {k: v
-                             for k, v in obj.items()
-                             if expr.match(k)}.items():
-                print_value(fmt, f, value, printer=entry.get('printer',
-                                                             None))
+            if groups.get(current_group, 0) > 0:
+                expr = re.compile(entry.get('fieldre'))
+                for f, value in {k: v
+                                 for k, v in obj.items()
+                                 if expr.match(k)}.items():
+                    print_value(maxlen, f, value, entry)

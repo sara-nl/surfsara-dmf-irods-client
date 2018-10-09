@@ -1,14 +1,15 @@
 import io
+import os
 import logging
 import base64
 import hashlib
 import datetime
+import json
 from irods.session import iRODSSession
 from irods.models import Collection
 from irods.models import DataObject
-from irods.models import DataObjectMeta
 from irods.models import Resource
-from irods.column import Like
+from irods.rule import Rule
 from irods import keywords as kw
 
 
@@ -40,6 +41,9 @@ class iRODS(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.session.cleanup()
 
+    def get_rule_return_value(self, res, index):
+        return str(res.MsParam_PI[index].inOutStruct.myStr)
+
     def sha256_checksum(self, filename, block_size=65536):
         def chunks(f, chunksize=io.DEFAULT_BUFFER_SIZE):
             return iter(lambda: f.read(chunksize), b'')
@@ -49,6 +53,42 @@ class iRODS(object):
             for chunk in chunks(f):
                 hasher.update(chunk)
         return base64.b64encode(hasher.digest())
+
+    def get_objects(self, lst):
+        def transform(obj):
+            ret = {'collection': os.path.dirname(obj.get('objPath', '')),
+                   'object': os.path.basename(obj.get('objPath', '')),
+                   'remote_file': str(obj.get('objPath', '')),
+                   'resource_value': str(obj.get('rescName')),
+                   'remote_replica_number': obj.get('replNum', 0),
+                   'remote_version': str(obj.get('version', '')),
+                   'remote_type': str(obj.get('dataType', '')),
+                   'remote_size': obj.get('dataSize', 0),
+                   'remote_owner_name': str(obj.get('dataOwnerName', '')),
+                   'remote_owner_zone': str(obj.get('dataOwnerZone', '')),
+                   'remote_replica_status': obj.get('replStatus', 1),
+                   'remote_status': str(obj.get('statusString', '')),
+                   'remote_checksum': str(obj.get('chksum', '')),
+                   'remote_expiry': str(obj.get('dataExpiry', '0')),
+                   'remote_create_time': int(obj.get('dataCreate', 0)),
+                   'remote_modify_time': int(obj.get('dataModify', 0))}
+            for k, v in obj.items():
+                if k.startswith('DMF_'):
+                    ret[str(k)] = str(v)
+            return ret
+
+        json_lst = json.dumps(lst)
+        rule_code = ("getDmf {\n" +
+                     " msiGetDmfObject(*lst, *res)\n"
+                     "}\n")
+        params = {"*lst": '"{0}"'.format(json_lst.replace('"', '\\"'))}
+        myrule = Rule(self.session,
+                      body=rule_code,
+                      params=params,
+                      output="*res")
+        res = myrule.execute()
+        objs = json.loads(self.get_rule_return_value(res, 0))
+        return [transform(obj) for obj in objs]
 
     def list_objects(self, filters={}, limit=-1):
         session = self.session
@@ -77,19 +117,14 @@ class iRODS(object):
         if limit != -1:
             query = query.limit(limit)
         for item in query.all():
-            mquery = session.query(DataObjectMeta.name,
-                                   DataObjectMeta.value)
-            mquery = mquery.filter(Collection.name == item[Collection.name])
-            mquery = mquery.filter(DataObject.name == item[DataObject.name])
-            mquery = mquery.filter(Like(DataObjectMeta.name, "SURF-%"))
             res = {}
-            for m in mquery.all():
-                res['meta_' + m[DataObjectMeta.name]] = m[DataObjectMeta.value]
             for k, v in fields.items():
                 val = item[v]
                 if isinstance(val, datetime.datetime):
                     val = (val - datetime.datetime(1970, 1, 1)).total_seconds()
                 res[k] = val
+            res['remote_file'] = os.path.join(res['collection'],
+                                              res['object'])
             yield res
 
     def get(self, ticket):
@@ -98,6 +133,7 @@ class iRODS(object):
         remote_file = ticket.remote_file
         obj = self.session.data_objects.get(remote_file)
         ticket.transferred = 0
+        ticket.remote_size = obj.size
         mb = 1024 * 1024
         with obj.open('r') as f:
             with open(ticket.local_file, 'wb') as fo:
