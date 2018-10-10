@@ -256,8 +256,12 @@ def dm_icomplete(argv=sys.argv[1:]):
         return
     if app.status().status == 'NOT RUNNING':
         return
+    if len(argv) > 1:
+        prefix = argv[1]
+    else:
+        prefix = ''
     client = Client(DmIRodsServer.get_socket_file())
-    for code, result in client.request_all({"completion_list": True}):
+    for code, result in client.request_all({"completion_list": prefix}):
         if code != ReturnCode.OK:
             print_request_error(code, result)
             sys.exit(8)

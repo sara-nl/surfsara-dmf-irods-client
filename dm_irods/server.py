@@ -285,6 +285,7 @@ class DmIRodsServer(Server):
     def process_completion_list(self, obj):
         now = time.time()
         age = now - self.completion_list_updated
+        prefix = obj.get('completion_list', '')
         if age > self.completion_list_timeout:
             self.completion_list = []
             self.completion_list_updated = now
@@ -294,7 +295,8 @@ class DmIRodsServer(Server):
                                           obj.get('object'))
                     self.completion_list.append(filename)
         for filename in self.completion_list:
-            yield ReturnCode.OK, filename
+            if filename.startswith(prefix):
+                yield ReturnCode.OK, filename
 
     def register_ticket(self, local_file, remote_file, mode):
         p = (local_file, remote_file)

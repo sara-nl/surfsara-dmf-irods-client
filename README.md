@@ -46,6 +46,20 @@ The resulting configuration is stored in the following file:
 
     ~/.DmIRodsServer/config.json
 
+### auto completion 
+
+The configuration script *dm_iconfig* will also create a shell script to
+support autocompletion for two dm_i - commands (*dm_iget* and *dm_iinit*).
+To enable autocomplete in the current shell, just source the autocompletion file
+
+    source ~/.DmIRodsServer/completion.sh
+
+To enable this functionally for all future shell sessions, it is possible to configure
+auto completion in *.bashrc*
+
+    cat ~/.DmIRodsServer/completion.sh >> ~/.bashrc
+
+
 ### dm_ilist
 
 *dm_ilist* lists all iRODS data objects on the DMF resource.
@@ -53,9 +67,11 @@ The resulting configuration is stored in the following file:
 Example:
 
     > dm_ilist
-    DMF FILE                                    TIME                STATUS
-    DUL /surf/home/rods/test50.mb
-    OFL /surf/home/rods/subdir/100Mfile
+    DMF TIME                STATUS         MOD FILE                              LOCAL_FILE
+    DUL 2018-10-10 15:52:38 DONE      100% GET /surf/home/rods/1M_0003.dat       1M_0003.dat
+    DUL 2018-10-10 16:31:52 DONE      100% PUT /surf/home/rods/1M_0001.dat       1M_0001.dat
+    DUL                                        /surf/home/rods/1G_0001.dat
+    DUL                                        /surf/home/rods/
 
 The first column is the DMF state of the file, while TIME and STATUS refer to the
 download/upload time and state.
@@ -71,19 +87,13 @@ Example:
     STATUS              FILE
     scheduled           /surf/home/rods/test50.mb 
 
-Immediatly after requesting a file the state has changed:
-
-    > dm_ilist
-    DMF FILE                                    TIME                STATUS
-    DUL /surf/home/rods/test50.mb               2018-09-12 15:06:47 GETTING
-    OFL /surf/home/rods/subdir/100Mfile
-
+Immediatly after requesting a file the state has changed (can be checked with *dm_ilist*).
 After a few minutes the state will change to DONE
+It is also possible to monitor the state of the files.
 
-    > dm_ilist
-    DMF FILE                                    TIME                STATUS
-    DUL /surf/home/rods/test50.mb               2018-09-12 15:06:47 DONE
-    OFL /surf/home/rods/subdir/100Mfile
+    > dm_ilist -w
+
+In this case, the screen refreshes periodically similar to the unix *watch* command.
 
 
 ### dm_iput
@@ -95,8 +105,50 @@ After a few minutes the state will change to DONE
 Immediatly after putting a file the state has changed:
 
     > dm_ilist
-    DMF FILE                               TIME                STATUS     MOD 
-    /surf/home/rods/test50mb               2018-09-12 12:43:00 PUTTING    PUT 
+    DMF TIME                STATUS         MOD FILE                       LOCAL_FILE
+    DUL 2018-10-10 16:31:52 PUTTING    30% PUT /surf/home/rods/test50.mb  test50.mb
+
+
+### dm_iinfo
+
+The command *dm_iinfo* can be used to retrieve details on a certain object.
+The result is divided in 4 blocks:
+ * Transfer related information (if the object has been transferred with this tool)
+ * Data on the local file
+ * iRODS related information
+ * DMF related information
+ 
+For example:
+
+    > dm_iinfo /surf/home/rods/1M_0003.dat
+    --------------------------
+    Transfer 
+    --------------------------
+    retries                : 3
+    status                 : DONE
+    errmsg                 :
+    time_created           : 2018-10-10 15:52:38
+    transferred            : 1048576
+    mode                   : GET
+    --------------------------
+    Local File
+    --------------------------
+    local_file             : ~/1M_0003.dat
+    checksum               : 4rOHOreFDi9BgY9dHBg0dS92kgV0ChXzj0U+dEBfXe0=
+    ...
+    --------------------------
+    Remote Object
+    --------------------------
+    remote_file            : /surf/home/rods/1M_0003.dat
+    remote_size            : 1048576
+    remote_create_time     : 2018-10-02 13:48:07
+    ...
+    --------------------------
+    DMF Data
+    --------------------------
+    DMF_state              : DUL
+    DMF_emask              : 160000
+    ...
 
 
 
@@ -129,8 +181,6 @@ The following commands are available (type *dm_idaemon --help* for more details)
 
 **Note**: the state of the daemon (i.e. files to be transfered) is persistent.
 The information is stored in ~/.DmIRodsServer/Tickets
-
-
 Apache License
 ==============
 
