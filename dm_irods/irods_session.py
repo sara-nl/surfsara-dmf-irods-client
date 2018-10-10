@@ -22,10 +22,12 @@ class iRODS(object):
                  logger=logging.getLogger("DmIRodsServer"),
                  connection_timeout=10,
                  resource_name='arcRescSURF01',
+                 is_resource_server=False,
                  **kwargs):
         if 'irods_password' in kwargs:
             pw = base64.b64decode(kwargs['irods_password'])
             kwargs['irods_password'] = pw
+        self.is_resource_server = is_resource_server
         self.logger = logger
         self.kwargs = kwargs
         self.connection_timeout = connection_timeout
@@ -78,15 +80,35 @@ class iRODS(object):
             return ret
 
         json_lst = json.dumps(lst)
+        if self.is_resource_server:
+            msiName = "msiGetDmfObject"
+        else:
+            msiName = "GetDmfObject"
+            # need to install the rule on the iCAT server:
+            # GetDmfObject(*lst, *res) {
+            #  *res = ""
+            #  remote("sara-irods5.irods.surfsara.nl","") {
+            #   msiGetDmfObject(*lst, *res);
+            #  }
+            # }
         rule_code = ("getDmf {\n" +
-                     " msiGetDmfObject(*lst, *res)\n"
+                     " *res=\"\";\n" +
+                     " " + msiName + "(*lst, *res);\n" +
                      "}\n")
-        params = {"*lst": '"{0}"'.format(json_lst.replace('"', '\\"'))}
+        encoded_list = json_lst.replace('"', '\\"')
+        params = {"*lst": '"{0}"'.format(encoded_list)}
         myrule = Rule(self.session,
                       body=rule_code,
                       params=params,
                       output="*res")
-        res = myrule.execute()
+        try:
+            res = myrule.execute()
+        except Exception as e:
+            self.logger.error(str(e))
+            for line in rule_code.split('\n'):
+                self.logger.error(line)
+            self.logger.error('*lst: "{0}"'.format(encoded_list))
+            raise
         objs = json.loads(self.get_rule_return_value(res, 0))
         return [transform(obj) for obj in objs]
 

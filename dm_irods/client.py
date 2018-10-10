@@ -95,6 +95,12 @@ def dm_iconfig(argv=sys.argv[1:]):
     cfg_group.add_argument('--irods_host', type=str)
     cfg_group.add_argument('--irods_port', type=int)
     cfg_group.add_argument('--irods_user_name', type=int)
+    cfg_group.add_argument('--irods_is_resource_server', action="store_true",
+                           help=("Connected directly to resource server\n" +
+                                 "(using microservice msiGetDmfObject to " +
+                                 "retrieve DMF state,\n" +
+                                 "otherwise GetDmfObject wrapper " +
+                                 "rule is used)"))
     cfg_group.add_argument('--connection_timeout', type=int,
                            help='timeout (in seconds, default 10)')
     cfg_group.add_argument('--stop_timeout', type=int,
@@ -142,6 +148,7 @@ def dm_iconfig(argv=sys.argv[1:]):
                                                'irods_user_name',
                                                'irods_env_file',
                                                'irods_authentication_file',
+                                               'irods_is_resource_server',
                                                'housekeeping',
                                                'resource_name',
                                                'connection_timeout',

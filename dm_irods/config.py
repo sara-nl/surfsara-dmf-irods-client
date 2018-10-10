@@ -101,6 +101,11 @@ class DmIRodsConfig(object):
                             default_value=default_value,
                             return_type=int)
 
+        def _get_resource_server(config):
+            value = config.get('irods_is_resource_server', False)
+            q = 'direct connection to resource (DMF) server'
+            return question_boolean(q, default_value=value)
+
         if self.is_configured and not force:
             return True
         else:
@@ -112,6 +117,7 @@ class DmIRodsConfig(object):
                 cfg['irods'] = self.configure_env_file(config)
             else:
                 cfg['irods'] = self.configure_entries(config)
+            cfg['irods']['is_resource_server'] = _get_resource_server(config)
             cfg['irods']['connection_timeout'] = _get_timeout(config)
             cfg['irods']['resource_name'] = _get_resource_name(config)
             cfg['housekeeping'] = _get_housekeeping(config)
