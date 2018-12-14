@@ -18,25 +18,38 @@ GET_BLOCK_SIZE = 1024
 
 
 class iRODS(object):
+    """
+    Wrapper class for iRODS session with additional
+    functions.
+    """
     def __init__(self,
+                 irods_config_file,
+                 irods_auth_file,
                  logger=logging.getLogger("DmIRodsServer"),
-                 connection_timeout=10,
-                 resource_name='arcRescSURF01',
-                 is_resource_server=False,
-                 **kwargs):
-        if 'irods_password' in kwargs:
-            pw = base64.b64decode(kwargs['irods_password'])
-            kwargs['irods_password'] = pw
+                 connection_timeout=None,
+                 resource_name=None,
+                 is_resource_server=None):
+        if connection_timeout is None:
+            connection_timeout = 10
+        if resource_name is None:
+            resource_name = 'arcRescSURF01'
+        if is_resource_server is None:
+            is_resource_server = False
+        if logger is None:
+            logger = logging.getLogger("DmIRodsServer"),
         self.is_resource_server = is_resource_server
         self.logger = logger
-        self.kwargs = kwargs
         self.connection_timeout = connection_timeout
         self.resource_name = resource_name
         self.logger = logger
+        self.irods_config_file = irods_config_file
+        self.irods_auth_file = irods_auth_file
 
     def __enter__(self):
-        self.session = iRODSSession(connection_timeout=self.connection_timeout,
-                                    **self.kwargs)
+        auth_file = self.irods_auth_file
+        env_file = self.irods_config_file
+        self.session = iRODSSession(irods_env_file=env_file,
+                                    irods_authentication_file=auth_file)
         self.session.connection_timeout = self.connection_timeout
         return self
 
@@ -44,9 +57,15 @@ class iRODS(object):
         self.session.cleanup()
 
     def get_rule_return_value(self, res, index):
+        """
+        Extract return value from iRODS microservice
+        """
         return str(res.MsParam_PI[index].inOutStruct.myStr)
 
     def sha256_checksum(self, filename, block_size=65536):
+        """
+        Compute checksum for the contents of a file
+        """
         def chunks(f, chunksize=io.DEFAULT_BUFFER_SIZE):
             return iter(lambda: f.read(chunksize), b'')
 
@@ -57,6 +76,27 @@ class iRODS(object):
         return base64.b64encode(hasher.digest())
 
     def get_objects(self, lst):
+        """
+        Get the DMF state for a list of objects.
+
+        lst -- A list of objects (absolute iRODS paths),
+               e.g. ['/irods/path/to/object1', '/irods/path/to/object2']
+
+        Returns:
+
+        A list of dictionaries with mixed DMF and iRODS information.
+
+        Example:
+        [{'DMF_bfid': '0',
+          ...
+          'DMF_path': '/path/to/dmf/object1',
+          'DMF_state': 'REG',
+          ...
+          'collection': u'/irods/path/to',
+          'object': 'object1',
+          ...},
+        ...]
+        """
         def transform(obj):
             ret = {'collection': os.path.dirname(obj.get('objPath', '')),
                    'object': os.path.basename(obj.get('objPath', '')),
@@ -202,6 +242,10 @@ class iRODS(object):
         self.checksum(ticket, target)
 
     def checksum(self, ticket, remote_file):
+        """
+        Compare the checksum of local file and object in iRODS
+        Raise ValueError if checksums don't match
+        """
         obj = self.session.data_objects.get(remote_file)
         if obj.checksum is not None:
             chcksum = ticket.checksum

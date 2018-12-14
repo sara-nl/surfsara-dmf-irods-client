@@ -64,7 +64,7 @@ class DmIRodsServer(Server):
             with open(self.config['irods']['irods_env_file']) as f:
                 cfg = json.load(f)
         else:
-            cfg = self.config['irods']
+            cfg = self.config
 
         # setup zone, user and resource
         self.zone = cfg['irods_zone_name']
@@ -83,7 +83,18 @@ class DmIRodsServer(Server):
         self.completion_list_timeout = 60
 
     def irods_connection(self):
-        return iRODS(logger=self.logger, **self.config['irods'])
+        """
+        Create iRODS session object
+        """
+        return iRODS(self.dm_irods_config.config_file,
+                     self.dm_irods_config.irods_auth_file,
+                     connection_timeout=self.config.get('connection_timeout',
+                                                        None),
+                     resource_name=self.config.get('resource_name',
+                                                   None),
+                     is_resource_server=self.config.get('is_resource_server',
+                                                        None),
+                     logger=self.logger)
 
     def read_tickets(self):
         for root, dirs, files in os.walk(self.ticket_dir):
@@ -118,13 +129,6 @@ class DmIRodsServer(Server):
             return self.process_put(obj)
         elif "info" in obj:
             return self.process_info(obj)
-        elif "password_configured" in obj:
-            ret = ('irods_password' in self.config.get('irods', {}) or
-                   'irods_authentication_file' in self.config.get('irods', {}))
-            return (ReturnCode.OK, json.dumps({'password_configured': ret}))
-        elif "set_password" in obj:
-            self.config['irods']['irods_password'] = obj["set_password"]
-            return (ReturnCode.OK, json.dumps({'password_configured': True}))
         else:
             return (ReturnCode.ERROR,
                     ("invalid command %s" % json.dumps(data)))

@@ -133,19 +133,18 @@ class DmIRodsConfig(object):
             default_port = config.get('irods_port', 1247)
             default_zone = config.get('irods_zone_name', None)
             default_user = config.get('irods_user_name', None)
-            cfg = {'irods':
-                   {'irods_host': question('iRODS config: Host',
-                                           default_value=default_host),
-                    'irods_port': question('iRODS config: Port',
-                                           default_value=default_port,
-                                           return_type=int),
-                    'irods_zone_name': question('iRODS config: Zone',
-                                                default_value=default_zone),
-                    'irods_user_name': question('iRODS config: User name',
-                                                default_value=default_user),
-                    'is_resource_server': _get_resource_server(config),
-                    'connection_timeout': _get_timeout(config),
-                    'resource_name': _get_resource_name(config)},
+            cfg = {'irods_host': question('iRODS config: Host',
+                                          default_value=default_host),
+                   'irods_port': question('iRODS config: Port',
+                                          default_value=default_port,
+                                          return_type=int),
+                   'irods_zone_name': question('iRODS config: Zone',
+                                               default_value=default_zone),
+                   'irods_user_name': question('iRODS config: User name',
+                                               default_value=default_user),
+                   'is_resource_server': _get_resource_server(config),
+                   'connection_timeout': _get_timeout(config),
+                   'resource_name': _get_resource_name(config),
                    'housekeeping': _get_housekeeping(config),
                    'stop_timeout': _get_stop_timeout(config)}
             dirname = os.path.dirname(self.config_file)
@@ -154,7 +153,6 @@ class DmIRodsConfig(object):
                 os.makedirs(dirname)
             self.logger.info('writing config to %s', self.config_file)
             self.configure_password(cfg
-                                    .get('irods', {})
                                     .get('irods_user_name', None))
             for line in json.dumps(cfg, indent=4).split("\n"):
                 self.logger.info(line)

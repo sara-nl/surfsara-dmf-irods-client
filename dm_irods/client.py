@@ -6,8 +6,6 @@ import atexit
 import logging
 import json
 import traceback
-import base64
-import getpass
 import datetime
 from argparse import ArgumentParser
 from server import DmIRodsServer
@@ -51,19 +49,6 @@ def ensure_daemon_is_running():
     config.ensure_configured()
     try:
         app.start()
-        client = Client(DmIRodsServer.get_socket_file())
-        code, result = client.request({"password_configured": True})
-        if code != ReturnCode.OK:
-            print_request_error(code, result)
-            sys.exit(8)
-        if not json.loads(result).get('password_configured', False):
-            pw = getpass.getpass('irods password for user %s: ' %
-                                 config.config.get('irods_user_name', ''))
-            code, result = client.request({"set_password":
-                                           base64.b64encode(pw)})
-            if code != ReturnCode.OK:
-                print_request_error(code, result)
-                sys.exit(8)
     except Exception as e:
         print(traceback.format_exc())
         print_error(str(e), box=True)
