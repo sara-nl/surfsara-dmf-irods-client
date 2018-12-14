@@ -2,11 +2,11 @@ import unittest
 import os
 import sys
 import re
+from tempdir import Tempdir
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from test.tempdir import Tempdir
-from socket_server import ServerApp
-from socket_server import Server
-from socket_server import ReturnCode
+from dm_irods.socket_server import ServerApp  # noqa: E402
+from dm_irods.socket_server import Server  # noqa: E402
+from dm_irods.socket_server import ReturnCode  # noqa: E402
 
 
 class MyServer(Server):

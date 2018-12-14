@@ -21,11 +21,13 @@ Installation
 
 The client can be installed with pip:
     
-    pip install git+https://github.com/sara-nl/iRODS_DMF_client.git#egg=irods-dmf-client
+    pip install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
 
 or using a virtual environment (recommented)
+    
+    pip install --user -U --no-cache-dir pip pipenv
+    pipenv install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
 
-    pipenv install git+https://github.com/sara-nl/iRODS_DMF_client.git#egg=irods-dmf-client
 
 Usage
 -----
@@ -36,15 +38,14 @@ When you are using a virtual environment, invoke a shell using pipenv
 ### dm_iconfig
 
 The script *dm_iconfig* is used to configure the connection to iRODS.
-There are two options:
-1. using an *irods_environment.json* and *password* file configured through iinit
-   (requires icommands)
-2. If icommands are not installed the scripts asks you to configure iRODS manually.
-   The password is required upon the first connection to the iRODS server.
+It tries to retrieve some information from a given 
+icommands configuration.
 
-The resulting configuration is stored in the following file:
+The resulting configuration is stored in the following files:
 
     ~/.DmIRodsServer/config.json
+    ~/.DmIRodsServer/completion.sh
+    ~/.DmIRodsServer/.irodsA
 
 ### auto completion 
 
@@ -54,8 +55,8 @@ To enable autocomplete in the current shell, just source the autocompletion file
 
     source ~/.DmIRodsServer/completion.sh
 
-To enable this functionally for all future shell sessions, it is possible to configure
-auto completion in *.bashrc*
+To enable this functionally for all future shell sessions,
+it is possible to configure auto completion in *.bashrc*
 
     cat ~/.DmIRodsServer/completion.sh >> ~/.bashrc
 

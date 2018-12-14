@@ -82,19 +82,31 @@ def init_logger():
 
 
 def dm_iconfig(argv=sys.argv[1:]):
+    """
+    Interactive configuration of the client.
+    Attempts to extract information from ~/.irods/irods_environment.json
+    if available.
+    """
     parser = ArgumentParser(description='Configure iRODS_DMF_client')
-    env_file_group = parser.add_argument_group('iRODS env file')
-    env_file_group.add_argument("--irods_env_file",
-                                type=str,
-                                help="irods env file")
-    env_file_group.add_argument("--irods_authentication_file",
-                                type=str,
-                                help="irods authentication file")
+    irods_env = os.path.expanduser("~/.irods/irods_environment.json")
+    if os.path.isfile(irods_env):
+        with open(irods_env) as fp:
+            config = json.load(fp)
+    else:
+        config = {}
     cfg_group = parser.add_argument_group('iRODS configuration')
-    cfg_group.add_argument('--irods_zone_name', type=str)
-    cfg_group.add_argument('--irods_host', type=str)
-    cfg_group.add_argument('--irods_port', type=int)
-    cfg_group.add_argument('--irods_user_name', type=int)
+    cfg_group.add_argument('--irods_zone_name',
+                           type=str,
+                           default=config.get('irods_zone_name', None))
+    cfg_group.add_argument('--irods_host',
+                           type=str,
+                           default=config.get('irods_host', None))
+    cfg_group.add_argument('--irods_port',
+                           type=int,
+                           default=config.get('irods_port', None))
+    cfg_group.add_argument('--irods_user_name',
+                           type=str,
+                           default=config.get('irods_user_name', None))
     cfg_group.add_argument('--irods_is_resource_server', action="store_true",
                            help=("Connected directly to resource server\n" +
                                  "(using microservice msiGetDmfObject to " +
@@ -115,39 +127,13 @@ def dm_iconfig(argv=sys.argv[1:]):
                                   type=int)
 
     args = parser.parse_args(argv)
-    conflict = []
-    excl_list = ['irods_zone_name',
-                 'irods_host',
-                 'irods_port',
-                 'irods_user_name']
-    env_file_based = None
-    if args.irods_env_file is not None:
-        env_file_based = True
-        for excl in excl_list:
-            if getattr(args, excl):
-                conflict.append('--irods_env_file <-> --%s' % excl)
-    if args.irods_authentication_file is not None:
-        env_file_based = True
-        for excl in excl_list:
-            if getattr(args, excl):
-                conflict.append('--irods_authentication_file <-> --%s' % excl)
-    if len(conflict) > 0:
-        print_error('conflicting arguments:\n' +
-                    '\n'.join(conflict), box=True)
-        sys.exit(8)
-    for excl in excl_list:
-        if getattr(args, excl):
-            env_file_based = False
     config = DmIRodsConfig(logger=init_logger())
     config.ensure_configured(force=True,
-                             env_file_based=env_file_based,
                              config={k: getattr(args, k)
                                      for k in ['irods_zone_name',
                                                'irods_host',
                                                'irods_port',
                                                'irods_user_name',
-                                               'irods_env_file',
-                                               'irods_authentication_file',
                                                'irods_is_resource_server',
                                                'housekeeping',
                                                'resource_name',

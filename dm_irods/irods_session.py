@@ -87,7 +87,7 @@ class iRODS(object):
             # need to install the rule on the iCAT server:
             # GetDmfObject(*lst, *res) {
             #  *res = ""
-            #  remote("sara-irods5.irods.surfsara.nl","") {
+            #  remote("<irods5>","") {
             #   msiGetDmfObject(*lst, *res);
             #  }
             # }

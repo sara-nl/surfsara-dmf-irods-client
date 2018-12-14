@@ -1,12 +1,12 @@
 import unittest
 import os
 import sys
+from tempdir import Tempdir
+from server_app_test import MyServer
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from test.tempdir import Tempdir
-from test.server_app_test import MyServer
-from socket_server import ServerApp
-from socket_server import Client
-from socket_server import ReturnCode
+from dm_irods.socket_server import ServerApp  # noqa: E402
+from dm_irods.socket_server import Client  # noqa: E402
+from dm_irods.socket_server import ReturnCode  # noqa: E402
 
 
 REMOVE_TEMP = True
