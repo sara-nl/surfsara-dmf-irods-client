@@ -26,8 +26,12 @@ The client can be installed with pip:
 or using a virtual environment (recommented)
     
     pip install --user -U --no-cache-dir pip pipenv
-    pipenv install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
+    pipenv --python 3 install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
 
+or for for python2:
+
+    pip install --user -U --no-cache-dir pip pipenv
+    pipenv --python 2 install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
 
 Usage
 -----
