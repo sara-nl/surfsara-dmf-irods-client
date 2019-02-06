@@ -4,10 +4,10 @@ import subprocess
 import json
 import time
 from argparse import ArgumentParser
-from dm_mock_server import DmMockServer
-from socket_server import ServerApp
-from socket_server import Client
-from socket_server import ReturnCode
+from .dm_mock_server import DmMockServer
+from .socket_server.server_app import ServerApp
+from .socket_server.client import Client
+from .socket_server.server import ReturnCode
 
 
 LS_PATH = '/bin/ls'
@@ -93,6 +93,9 @@ def dmls(argv=sys.argv[1:]):
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
     (out, err) = p.communicate()
+    if sys.version_info[0] > 2:
+        out = out.decode()
+        err = err.decode()
     lines = out.split('\n')
     if len(lines) > 0:
         for line in lines:

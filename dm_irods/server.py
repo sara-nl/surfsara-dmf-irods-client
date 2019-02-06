@@ -1,14 +1,17 @@
 import os
+import sys
 import json
-import traceback
 import time
-from irods_session import iRODS
-from config import DmIRodsConfig
+import traceback
+from .irods_session import iRODS
+from .config import DmIRodsConfig
 from irods.exception import NetworkException
 from irods.exception import RULE_FAILED_ERR
-from socket_server import Server
-from socket_server import ReturnCode
-from ticket import Ticket
+from .socket_server.server import Server
+from .socket_server.server_app import ServerApp
+from .socket_server.util import ReturnCode
+from .ticket import Ticket
+from .cprint import print_error
 
 
 class DmIRodsServer(Server):
@@ -104,8 +107,9 @@ class DmIRodsServer(Server):
 
     def read_ticket_from_file(self, ticket_file):
         self.logger.info("reading ticket from file %s", ticket_file)
-        with open(ticket_file) as f:
-            data = json.load(f)
+        try:
+            with open(ticket_file, "r") as f:
+                data = json.load(f)
             ticket = Ticket.from_json(data)
             if ticket.status in [Ticket.GETTING, Ticket.PUTTING]:
                             ticket.retry()
@@ -114,9 +118,14 @@ class DmIRodsServer(Server):
             self.tickets[p] = ticket
             if ticket.is_active():
                 self.active_tickets[p] = ticket
+        except Exception as ex:
+            self.logger.error("failed to read from file %s:", ticket_file)
+            self.logger.error("failed to read from file %s:", str(ex))
+            raise
+
         if ticket.mode == Ticket.PUT:
             ticket.update_local_attributes()
-            with open(ticket_file, 'wb') as f:
+            with open(ticket_file, 'w') as f:
                 f.write(ticket.to_json())
         self.logger.info(ticket.to_json())
 
@@ -150,22 +159,32 @@ class DmIRodsServer(Server):
         remote_file = obj["get"]
         local_file = obj['local_file']
         try:
-            remote_file = remote_file.encode().format(zone=self.zone,
-                                                      user=self.user)
+            if sys.version_info[0] == 2:
+                remote_file = remote_file.encode()
+                local_file = local_file.encode()
+            remote_file = remote_file.format(zone=self.zone,
+                                             user=self.user)
             if not os.path.isabs(remote_file):
                 remote_file = os.path.join(self.default_path, remote_file)
-            local_file = local_file.encode()
-        except Exception:
+        except Exception as e:
+            msg = "cannot encode unicode: {}".format(str(e))
             return (ReturnCode.ERROR, {"code": DmIRodsServer.FAILED,
-                                       "msg": "cannot encode unicode"})
+                                       "msg": msg,
+                                       "exception": e.__class__.__name__,
+                                       "traceback": traceback.format_exc()})
         if isinstance(remote_file, str):
             return (ReturnCode.OK,
                     self.register_ticket(local_file, remote_file, Ticket.GET))
         else:
             try:
                 s = str(obj["get"])
-            except Exception:
+            except Exception as e:
                 s = "[object]"
+                return (ReturnCode.ERROR,
+                        {"code": DmIRodsServer.FAILED,
+                         "msg": "invalid type: %s" % s,
+                         "exception": e.__class__.__name__,
+                         "traceback": traceback.format_exc()})
             return (ReturnCode.ERROR,
                     {"code": DmIRodsServer.FAILED,
                      "msg": "invalid type: %s" % s})
@@ -175,12 +194,17 @@ class DmIRodsServer(Server):
         local_file = obj['put']
 
         try:
-            remote_file = remote_file.encode().format(zone=self.zone,
-                                                      user=self.user)
-            local_file = local_file.encode()
-        except Exception:
+            if sys.version_info[0] == 2:
+                remote_file = remote_file.encode()
+                local_file = local_file.encode()
+            remote_file = remote_file.format(zone=self.zone,
+                                             user=self.user)
+        except Exception as e:
+            msg = "cannot encode unicode: {}".format(str(e))
             return (ReturnCode.ERROR, {"code": DmIRodsServer.FAILED,
-                                       "msg": "cannot encode unicode"})
+                                       "msg": msg,
+                                       "exception": e.__class__.__name__,
+                                       "traceback": traceback.format_exc()})
         if isinstance(local_file, str):
             return (ReturnCode.OK,
                     self.register_ticket(local_file, remote_file, Ticket.PUT))
@@ -196,10 +220,15 @@ class DmIRodsServer(Server):
     def process_info(self, obj):
         remote_file = obj['info']
         try:
-            remote_file = remote_file.encode()
-        except Exception:
+            if sys.version_info[0] == 2:
+                remote_file = remote_file.encode()
+        except Exception as e:
+            msg = "cannot encode unicode: {}".format(str(e))
             return (ReturnCode.ERROR, {"code": DmIRodsServer.FAILED,
-                                       "msg": "cannot encode unicode"})
+                                       "msg": msg,
+                                       "exception": e.__class__.__name__,
+                                       "traceback": traceback.format_exc()})
+
         with self.irods_connection() as irods:
             filters = {'object': os.path.basename(remote_file),
                        'collection': os.path.dirname(remote_file)}
@@ -258,9 +287,11 @@ class DmIRodsServer(Server):
         def sort_key(x):
             return Ticket.sorted_codes.index(x.status)
 
-        ticket_list = self.tickets.values()
-        ticket_list.sort(key=lambda x: x.time_created)
-        ticket_list.sort(key=sort_key, reverse=False)
+        ticket_list = sorted(self.tickets.values(),
+                             key=lambda x: x.time_created)
+
+        ticket_list = sorted(ticket_list,
+                             key=sort_key, reverse=False)
         buff = []
         for ticket in ticket_list:
             buff.append(ticket.to_dict())
@@ -342,11 +373,12 @@ class DmIRodsServer(Server):
     def create_ticket(self, local_file, remote_file, mode):
         ticket = Ticket(local_file, remote_file, mode=mode)
         p = (local_file, remote_file)
+        tjson = ticket.to_json()
+        tfile = os.path.join(self.ticket_dir, ticket.ticket_file)
         self.tickets[p] = ticket
         self.active_tickets[p] = ticket
-        with open(os.path.join(self.ticket_dir,
-                               ticket.ticket_file), "w") as fp:
-            fp.write(ticket.to_json())
+        with open(tfile, "w") as fp:
+            fp.write(tjson)
         return ticket
 
     def update_ticket(self, local_file, remote_file):
@@ -375,7 +407,9 @@ class DmIRodsServer(Server):
 
     def tick(self):
         self.housekeeping()
-        for p, ticket in self.active_tickets.items():
+        keys = list(self.active_tickets.keys())
+        for p in keys:
+            ticket = self.active_tickets[p]
             if not self.active:
                 break
             if ticket.status in [Ticket.WAITING, Ticket.RETRY]:
@@ -501,3 +535,30 @@ class DmIRodsServer(Server):
         self.logger.error(str(e))
         for line in tb.split('\n'):
             self.logger.error(line)
+
+
+def ensure_daemon_is_running():
+    app = ServerApp(DmIRodsServer,
+                    socket_file=DmIRodsServer.get_socket_file(),
+                    verbose=False)
+    config = DmIRodsConfig(logger=app.logger)
+    if not config.is_configured:
+        app.stop()
+    config.ensure_configured()
+    try:
+        app.start()
+    except Exception as e:
+        print(traceback.format_exc())
+        print_error(str(e), box=True)
+        sys.exit(8)
+
+
+def dm_idaemon(argv=sys.argv[1:]):
+    app = ServerApp(DmIRodsServer,
+                    module='dm_irods.server',
+                    socket_file=DmIRodsServer.get_socket_file())
+    app.main(argv)
+
+
+if __name__ == "__main__":
+    dm_idaemon()

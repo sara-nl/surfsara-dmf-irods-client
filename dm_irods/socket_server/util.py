@@ -33,6 +33,7 @@ def recvall(socket, count):
 
 
 def send_message(socket, data, code=ReturnCode.OK):
+    data = data.encode()
     length = len(data)
     socket.sendall(struct.pack('!II', length, code))
     socket.sendall(data)
@@ -41,4 +42,6 @@ def send_message(socket, data, code=ReturnCode.OK):
 def recv_message(socket):
     lengthbuf = recvall(socket, 8)
     length, code = struct.unpack('!II', lengthbuf)
-    return (code, recvall(socket, length))
+    data = recvall(socket, length)
+    data = data.decode()
+    return (code, data)

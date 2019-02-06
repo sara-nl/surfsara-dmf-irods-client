@@ -2,9 +2,9 @@ import logging
 import socket
 import time
 import json
-from util import send_message
-from util import recv_message
-from util import ReturnCode
+from .util import send_message
+from .util import recv_message
+from .util import ReturnCode
 
 
 class Client(object):

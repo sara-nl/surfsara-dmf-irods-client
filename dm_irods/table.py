@@ -4,8 +4,8 @@ import os
 import fcntl
 import termios
 import struct
-from cprint import format_bold
-from cprint import format_status
+from .cprint import format_bold
+from .cprint import format_status
 
 
 def get_term_size():

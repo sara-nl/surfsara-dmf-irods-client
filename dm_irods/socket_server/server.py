@@ -6,9 +6,9 @@ import time
 import json
 import traceback
 import errno
-from util import send_message
-from util import recv_message
-from util import ReturnCode
+from .util import send_message
+from .util import recv_message
+from .util import ReturnCode
 
 
 class CustomArguments(object):

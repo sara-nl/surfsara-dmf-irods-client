@@ -1,9 +1,16 @@
 import os
+import sys
 import json
 import logging
+from argparse import ArgumentParser
 import irods.password_obfuscation as password_obfuscation
 from getpass import getpass
-from cprint import format_bold
+from .cprint import format_bold
+from .logger import init_logger
+
+
+if sys.version_info[0] == 3:
+    raw_input = input
 
 
 def question_boolean(question, default_value=None):
@@ -74,7 +81,7 @@ class DmIRodsConfig(object):
             self.logger.info('read config file %s', self.config_file)
             with open(self.config_file) as f:
                 for k, v in json.load(f).items():
-                    if isinstance(v, unicode):
+                    if sys.version_info[0] == 2 and isinstance(v, unicode):
                         self.config[str(k)] = str(v)
                     else:
                         self.config[str(k)] = v
@@ -156,8 +163,8 @@ class DmIRodsConfig(object):
                                     .get('irods_user_name', None))
             for line in json.dumps(cfg, indent=4).split("\n"):
                 self.logger.info(line)
-            with open(self.config_file, "wr") as fp:
-                fp.write(json.dumps(cfg, indent=4))
+            with open(self.config_file, "w") as fp:
+                json.dump(cfg, fp, indent=4)
             self.configure_completion_file()
             return False
 
@@ -173,4 +180,69 @@ class DmIRodsConfig(object):
     def configure_password(self, user_name):
         pw = getpass("irods password for user {0}:".format(user_name))
         with open(self.irods_auth_file, "wb") as fp:
-            fp.write(password_obfuscation.encode(pw))
+            fp.write(password_obfuscation.encode(pw).encode())
+
+
+def dm_iconfig(argv=sys.argv[1:]):
+    """
+    Interactive configuration of the client.
+    Attempts to extract information from ~/.irods/irods_environment.json
+    if available.
+    """
+    parser = ArgumentParser(description='Configure iRODS_DMF_client')
+    irods_env = os.path.expanduser("~/.irods/irods_environment.json")
+    if os.path.isfile(irods_env):
+        with open(irods_env) as fp:
+            config = json.load(fp)
+    else:
+        config = {}
+    cfg_group = parser.add_argument_group('iRODS configuration')
+    cfg_group.add_argument('--irods_zone_name',
+                           type=str,
+                           default=config.get('irods_zone_name', None))
+    cfg_group.add_argument('--irods_host',
+                           type=str,
+                           default=config.get('irods_host', None))
+    cfg_group.add_argument('--irods_port',
+                           type=int,
+                           default=config.get('irods_port', None))
+    cfg_group.add_argument('--irods_user_name',
+                           type=str,
+                           default=config.get('irods_user_name', None))
+    cfg_group.add_argument('--irods_is_resource_server', action="store_true",
+                           help=("Connected directly to resource server\n" +
+                                 "(using microservice msiGetDmfObject to " +
+                                 "retrieve DMF state,\n" +
+                                 "otherwise GetDmfObject wrapper " +
+                                 "rule is used)"))
+    cfg_group.add_argument('--connection_timeout', type=int,
+                           help='timeout (in seconds, default 10)')
+    cfg_group.add_argument('--stop_timeout', type=int,
+                           help=('stop daemon automatically after being idle' +
+                                 '(in minutes, default 10, 0 = never stop)'))
+    cfg_group.add_argument('--resource_name', type=str,
+                           help='iRODS resource (default arcRescSURF01)')
+    cfg_server_group = parser.add_argument_group('DM-iRODS config')
+    cfg_server_group.add_argument('--housekeeping',
+                                  help=('remove old jobs after this time ' +
+                                        '(hours, default=24)'),
+                                  type=int)
+
+    args = parser.parse_args(argv)
+    config = DmIRodsConfig(logger=init_logger())
+    config.ensure_configured(force=True,
+                             config={k: getattr(args, k)
+                                     for k in ['irods_zone_name',
+                                               'irods_host',
+                                               'irods_port',
+                                               'irods_user_name',
+                                               'irods_is_resource_server',
+                                               'housekeeping',
+                                               'resource_name',
+                                               'connection_timeout',
+                                               'stop_timeout']
+                                     if getattr(args, k) is not None})
+
+
+if __name__ == "__main__":
+    dm_iconfig()

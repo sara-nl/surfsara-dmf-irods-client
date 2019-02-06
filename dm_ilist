@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-from dm_irods import dm_ilist
+#!/bin/bash
 
-if __name__ == "__main__":
-    dm_ilist()
+/usr/bin/env python -m dm_irods.list $@

@@ -6,7 +6,7 @@ import logging
 import shutil
 import hashlib
 import base64
-from server import DmIRodsServer
+from .server import DmIRodsServer
 
 
 class iRODSMockSession(object):

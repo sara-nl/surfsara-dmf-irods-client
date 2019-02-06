@@ -5,8 +5,7 @@ import sys
 import atexit
 import signal
 import time
-import imp
-import inspect
+import importlib
 import subprocess
 import json
 from argparse import ArgumentParser
@@ -27,8 +26,18 @@ class ProgramStatus(object):
 
 
 class ServerApp(object):
+    """
+    Controller application for managing the Server process.
+    Supported operations:
+    - status
+    - start
+    - stop
+    - restart
+    """
+
     def __init__(self,
                  klass,
+                 module=None,
                  pid_file=None,
                  socket_file=None,
                  log_file=None,
@@ -36,8 +45,13 @@ class ServerApp(object):
                  logger=None,
                  verbose=True,
                  custom_args=None,
+                 python=None,
                  **kwargs):
         self.klass = klass
+        if module is None:
+            self.module = klass.__module__
+        else:
+            self.module = module
         self.system_name = klass.get_system_name()
         if work_dir is None:
             self.work_dir = self._get_default_workdir()
@@ -48,7 +62,10 @@ class ServerApp(object):
         self.log_file = self._get_default_file_name(log_file, "log")
         self._logger = logger
         self.kwargs = kwargs
-        self.python_prefix = ["/usr/bin/env", "python"]
+        if python is None:
+            self.python_prefix = ["/usr/bin/env", "python"]
+        else:
+            self.python_prefix = [python]
         self.verbose = verbose
         if custom_args is None:
             self.custom_args = klass.get_custom_arguments()
@@ -142,7 +159,11 @@ class ServerApp(object):
             self.run(args)
 
     def start(self):
+        """
+        Attempt to start the server if it is not running yet
+        """
         need_start = False
+        # check if process is running
         try:
             with open(self.pid_file, "r") as f:
                 pid = json.load(f).get('pid')
@@ -156,12 +177,11 @@ class ServerApp(object):
         except Exception:
             self.logger.info("pid file %s does not exist" % self.pid_file)
             need_start = True
+
+        # start process if needed
         if need_start:
-            module = inspect.getmodule(self.klass)
-            filename, ext = os.path.splitext(module.__file__)
-            cmd = self.python_prefix + [__file__,
-                                        os.path.dirname(module.__file__),
-                                        os.path.basename(filename),
+            cmd = self.python_prefix + ['-m', self.__module__,
+                                        self.module,
                                         self.klass.__name__,
                                         '--socket', self.socket_file,
                                         '--pid', self.pid_file,
@@ -247,18 +267,23 @@ class ServerApp(object):
                 return ProgramStatus("NOT RUNNING")
 
     def log(self):
-        print self.log_file
         cmd = ['/usr/bin/tail', '-f', '-n', '10', self.log_file]
-        print ' '.join(cmd)
         p = subprocess.Popen(cmd,
                              bufsize=1,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
-        while True:
-            output = p.stdout.readline()
-            if output == '' and p.poll() is not None:
-                break
-            print(output.strip())
+        if sys.version_info[0] == 2:
+            while True:
+                output = p.stdout.readline()
+                if output == '' and p.poll() is not None:
+                    break
+                print(output.strip())
+        else:
+            for output in iter(p.stdout.readline, b''):
+                output = output.decode()
+                if output == '' and p.poll() is not None:
+                    break
+                print(output.strip())
         code = p.poll()
         return code
 
@@ -302,15 +327,12 @@ class ServerApp(object):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        sys.exit('server_app.py requires at least 4 arguments')
-    module_path = sys.argv[1]
-    module_name = sys.argv[2]
-    klass_name = sys.argv[3]
-    fp, pathname, description = imp.find_module(module_name, [module_path])
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    sys.path.insert(0, module_path)
-    mod = imp.load_module(module_name, fp, pathname, description)
-    klass = getattr(mod, klass_name)
+    if len(sys.argv) < 2:
+        sys.exit('server_app.py requires at least 3 arguments:\n' +
+                 'MODULE TARGET_MODULE TARGET_CLASS ...')
+    module_name = sys.argv[1]
+    klass_name = sys.argv[2]
+    module = importlib.import_module(module_name)
+    klass = getattr(module, klass_name)
     app = ServerApp(klass)
-    app.main(sys.argv[4:])
+    app.main(sys.argv[2:])

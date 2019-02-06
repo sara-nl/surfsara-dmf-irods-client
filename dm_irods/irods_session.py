@@ -223,7 +223,7 @@ class iRODS(object):
         ticket.transferred = 0
         mb = 1024 * 1024
         self.logger.info('checksum %s', ticket.checksum)
-        with open(ticket.local_file, 'r') as fin:
+        with open(ticket.local_file, 'rb') as fin:
             options = {kw.REG_CHKSUM_KW: ''}
             with self.session.data_objects.open(target, 'w',
                                                 **options) as fout:

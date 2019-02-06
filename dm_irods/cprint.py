@@ -1,3 +1,6 @@
+import json
+import sys
+from .socket_server.server import ReturnCode
 try:
     from termcolor import colored
     with_color = True
@@ -79,8 +82,27 @@ def print_error(st, box=False):
 
 
 def terminal_erase():
-    print('\u001Bc'.decode('unicode_escape'))
+    if sys.version_info[0] == 2:
+        print('\u001Bc'.decode('unicode_escape'))
+    else:
+        print(b'\u001Bc'.decode('unicode_escape'))
 
 
 def terminal_home():
-    print('\u001B[H'.decode('unicode_escape'))
+    if sys.version_info[0] == 2:
+        print('\u001B[H'.decode('unicode_escape'))
+    else:
+        print(b'\u001B[H'.decode('unicode_escape'))
+
+
+def print_request_error(code, result):
+    if code != ReturnCode.OK:
+        try:
+            print('Return Code %d (%s)' % (code, ReturnCode.to_string(code)))
+            obj = json.loads(result)
+            print('Exception %s raised' % obj.get('exception', '?'))
+            print('Message: %s' % obj.get('msg', '?'))
+            print('Traceback: %s' % obj.get('traceback', '?'))
+            print_error(obj.get('msg', '?'), box=True)
+        except Exception:
+            print_error(result, box=True)

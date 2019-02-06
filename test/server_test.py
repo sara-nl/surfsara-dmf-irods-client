@@ -2,9 +2,9 @@ import unittest
 import os
 import sys
 import threading
-from tempdir import Tempdir
+from .tempdir import Tempdir
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from dm_irods.socket_server import Server  # noqa: E402
+from dm_irods.socket_server.server import Server  # noqa: E402
 
 
 class MyServer(Server):

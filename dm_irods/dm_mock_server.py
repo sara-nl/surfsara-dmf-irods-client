@@ -1,8 +1,10 @@
 import os
 import json
 import time
-from socket_server import Server
-from socket_server import ReturnCode
+import sys
+from .socket_server.server import Server
+from .socket_server.server import ReturnCode
+from .socket_server.server_app import ServerApp
 
 
 class DmMockServer(Server):
@@ -27,7 +29,10 @@ class DmMockServer(Server):
         self.read_data()
         self.default_mig_time = 10
         self.default_unmig_time = 10
-        self.fhandle = os.urandom(32).encode('hex')
+        if sys.version_info[0] == 2:
+            self.fhandle = os.urandom(32).encode('hex')
+        else:
+            self.fhandle = os.urandom(32).hex()
         self.default_owner = 45953
 
     def read_data(self):
@@ -153,3 +158,10 @@ class DmMockServer(Server):
                                  "%d.json" % obj['inode'])
         with open(data_path, 'w') as fp:
             json.dump(obj, fp)
+
+
+if __name__ == "__main__":
+    app = ServerApp(DmMockServer,
+                    module='dm_irods.dm_mock_server',
+                    socket_file=DmMockServer.get_socket_file())
+    app.main()

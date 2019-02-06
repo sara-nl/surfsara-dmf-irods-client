@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-from dm_irods.dm_mock_server import DmMockServer
-from dm_irods.socket_server import ServerApp
+#!/bin/bash
 
-
-if __name__ == "__main__":
-    app = ServerApp(DmMockServer,
-                    socket_file=DmMockServer.get_socket_file())
-    app.main()
+/usr/bin/env python -m dm_irods.dm_mock_server $@

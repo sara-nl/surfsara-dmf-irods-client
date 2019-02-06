@@ -1,5 +1,6 @@
 import io
 import os
+import sys
 import json
 import hashlib
 import base64
@@ -158,7 +159,10 @@ class Ticket(object):
         self.status = Ticket.RETRY
 
     def update_local_checksum(self):
-        self.checksum = sha256_checksum(self.local_file)
+        if sys.version_info[0] == 2:
+            self.checksum = sha256_checksum(self.local_file)
+        else:
+            self.checksum = sha256_checksum(self.local_file).decode()
 
     def update_local_attributes(self):
         self.local_atime = os.path.getatime(self.local_file)
@@ -176,7 +180,9 @@ class Ticket(object):
 
     @staticmethod
     def from_json(obj):
-        cobj = {str(k): str(value) if isinstance(value, unicode) else value
+        cobj = {str(k): str(value)
+                if sys.version_info[0] == 2 and isinstance(value, unicode)
+                else value
                 for k, value in obj.items()
                 if str(k) in Ticket.fields}
         cobj['status'] = Ticket.string_to_status(obj['status'])
