@@ -19,19 +19,31 @@ The client application consists of 6 components:
 Installation
 ------------
 
+# Requiremnents
+
+Python modules can be installed globally or in the user's home directory 
+without root privileges using [virtual environment](https://docs.python.org/3/glossary.html#term-virtual-environment).
+
+To install the package from github the following packages are required
+* Python 2.7 or 3.6
+* [pip](https://pypi.org/project/pip/) 
+* [pipenv](pip install --user --upgrade pipenv) (only for the second option)
+* git 
+
+
 The client can be installed with pip:
     
-    pip install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
+    pip install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=irods-dmf-client
 
 or using a virtual environment (recommented)
     
     pip install --user -U --no-cache-dir pip pipenv
-    pipenv --python 3 install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
+    pipenv --python 3 install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=irods-dmf-client
 
 or for for python2:
 
     pip install --user -U --no-cache-dir pip pipenv
-    pipenv --python 2 install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=surfsara-dmf-irods-client
+    pipenv --python 2 install git+https://github.com/sara-nl/surfsara-dmf-irods-client.git#egg=irods-dmf-client
 
 Usage
 -----
@@ -184,8 +196,16 @@ The following commands are available (type *dm_idaemon --help* for more details)
 
     dm_idaemon
 
-**Note**: the state of the daemon (i.e. files to be transfered) is persistent.
-The information is stored in ~/.DmIRodsServer/Tickets
+**Note**
+
+the state of the daemon (i.e. files to be transfered) is persistent.
+The information is stored in 
+
+```
+~/.DmIRodsServer/Tickets
+```
+
+
 Apache License
 ==============
 
