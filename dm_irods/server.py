@@ -272,8 +272,11 @@ class DmIRodsServer(Server):
     def _process_ticket(self, irods, buff):
         remote_files = [item.get('remote_file')
                         for item in buff]
-        remote_objects = {item.get('remote_file'): item
-                          for item in irods.get_objects(remote_files)}
+        if self.config.get('ignore_dmf_msi', False):
+            remote_objects = {}
+        else:
+            remote_objects = {item.get('remote_file'): item
+                              for item in irods.get_objects(remote_files)}
         for item in buff:
             remote_file = item.get('remote_file')
             item['collection'] = os.path.dirname(remote_file)
