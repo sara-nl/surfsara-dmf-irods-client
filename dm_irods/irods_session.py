@@ -178,7 +178,7 @@ class iRODS(object):
         query = query.order_by(Collection.name, DataObject.name)
         if limit != -1:
             query = query.limit(limit)
-        for item in query.all():
+        for item in query.get_results():
             res = {}
             for k, v in fields.items():
                 val = item[v]
