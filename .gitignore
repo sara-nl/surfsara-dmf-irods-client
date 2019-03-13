@@ -2,3 +2,5 @@
 *.pyc
 Pipfile
 build
+dist
+irods_dmf_client.egg-info
