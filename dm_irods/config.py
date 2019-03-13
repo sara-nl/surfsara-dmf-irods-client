@@ -159,8 +159,8 @@ class DmIRodsConfig(object):
                 self.logger.info('mkdir %s', dirname)
                 os.makedirs(dirname)
             self.logger.info('writing config to %s', self.config_file)
-            self.configure_password(cfg
-                                    .get('irods_user_name', None))
+            self.configure_password(cfg.get('irods_user_name', None),
+                                    config.get('irods_password', None))
             for line in json.dumps(cfg, indent=4).split("\n"):
                 self.logger.info(line)
             with open(self.config_file, "w") as fp:
@@ -177,8 +177,9 @@ class DmIRodsConfig(object):
             fp.write("complete -C dm_icomplete " +
                      "dm_iget dm_iinfo\n")
 
-    def configure_password(self, user_name):
-        pw = getpass("irods password for user {0}:".format(user_name))
+    def configure_password(self, user_name, pw=None):
+        if pw is None:
+            pw = getpass("irods password for user {0}:".format(user_name))
         with open(self.irods_auth_file, "wb") as fp:
             fp.write(password_obfuscation.encode(pw).encode())
 
@@ -209,6 +210,9 @@ def dm_iconfig(argv=sys.argv[1:]):
     cfg_group.add_argument('--irods_user_name',
                            type=str,
                            default=config.get('irods_user_name', None))
+    cfg_group.add_argument('--irods_password',
+                           type=str,
+                           default=config.get('irods_password', None))
     cfg_group.add_argument('--irods_is_resource_server', action="store_true",
                            help=("Connected directly to resource server\n" +
                                  "(using microservice msiGetDmfObject to " +
@@ -236,6 +240,7 @@ def dm_iconfig(argv=sys.argv[1:]):
                                                'irods_host',
                                                'irods_port',
                                                'irods_user_name',
+                                               'irods_password',
                                                'irods_is_resource_server',
                                                'housekeeping',
                                                'resource_name',

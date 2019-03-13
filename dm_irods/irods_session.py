@@ -17,6 +17,123 @@ PUT_BLOCK_SIZE = 1024
 GET_BLOCK_SIZE = 1024
 
 
+class GetDmfObject(object):
+    MAX_RULE_SIZE = 20000
+
+    """
+    Rule executer for query the DMF state
+    """
+    def __init__(self, irods):
+        self.irods = irods
+        self.logger = irods.logger
+        if irods.is_resource_server:
+            self.msi_name = "msiGetDmfObject"
+        else:
+            self.msi_name = "GetDmfObject"
+            # need to install the rule on the iCAT server:
+            # GetDmfObject(*lst, *res) {
+            #  *res = ""
+            #  remote("<irods5>","") {
+            #   msiGetDmfObject(*lst, *res);
+            #  }
+            # }
+
+    def get_rule_return_value(self, res, index):
+        """
+        Extract return value from iRODS microservice
+        """
+        return str(res.MsParam_PI[index].inOutStruct.myStr)
+
+    def transform(self, obj):
+            ret = {'collection': os.path.dirname(obj.get('objPath', '')),
+                   'object': os.path.basename(obj.get('objPath', '')),
+                   'remote_file': str(obj.get('objPath', '')),
+                   'resource_value': str(obj.get('rescName')),
+                   'remote_replica_number': obj.get('replNum', 0),
+                   'remote_version': str(obj.get('version', '')),
+                   'remote_type': str(obj.get('dataType', '')),
+                   'remote_size': obj.get('dataSize', 0),
+                   'remote_owner_name': str(obj.get('dataOwnerName', '')),
+                   'remote_owner_zone': str(obj.get('dataOwnerZone', '')),
+                   'remote_replica_status': obj.get('replStatus', 1),
+                   'remote_status': str(obj.get('statusString', '')),
+                   'remote_checksum': str(obj.get('chksum', '')),
+                   'remote_expiry': str(obj.get('dataExpiry', '0')),
+                   'remote_create_time': int(obj.get('dataCreate', 0)),
+                   'remote_modify_time': int(obj.get('dataModify', 0))}
+            for k, v in obj.items():
+                if k.startswith('DMF_'):
+                    ret[str(k)] = str(v)
+            return ret
+
+    def process_all(self, items):
+        """
+        Get the DMF state for a list of objects.
+
+        items -- A list of dicts with irods paths
+
+        Returns:
+
+        A list of dictionaries with mixed DMF and iRODS information.
+
+        Example:
+        [{'DMF_bfid': '0',
+          ...
+          'DMF_path': '/path/to/dmf/object1',
+          'DMF_state': 'REG',
+          ...
+          'collection': u'/irods/path/to',
+          'object': 'object1',
+          ...},
+        ...]
+        """
+
+        irods_object_list = ''
+        buff = {}
+        for item in items:
+            if irods_object_list == '':
+                irods_object_list = 'list('
+            else:
+                irods_object_list += ','
+            obj_path = item.get('remote_file')
+            buff[obj_path] = item
+            irods_object_list += '"{0}"'.format(obj_path)
+            if len(irods_object_list) >= GetDmfObject.MAX_RULE_SIZE:
+                irods_object_list += ')'
+                for item2 in self.flush(irods_object_list, buff):
+                    yield item2
+                irods_object_list = ''
+                buff = {}
+        if irods_object_list != '':
+            irods_object_list += ')'
+            for item2 in self.flush(irods_object_list, buff):
+                yield item2
+
+    def flush(self, irods_object_list, buff):
+        rule_code = ("getDmf {\n" +
+                     " *lst=" + irods_object_list + ";\n" +
+                     " *res=\"\";\n" +
+                     " " + self.msi_name + "(*lst, *res);\n" +
+                     "}\n")
+        myrule = Rule(self.irods.session,
+                      body=rule_code,
+                      output="*res")
+        try:
+            res = myrule.execute()
+        except Exception as e:
+            self.logger.error(str(e))
+            for line in rule_code.split('\n'):
+                self.logger.error(line)
+            self.logger.error('*lst: "{0}"'.format(irods_object_list))
+            raise
+
+        for obj in json.loads(self.get_rule_return_value(res, 0)):
+            p = obj['objPath']
+            if p in buff:
+                buff[p].update(self.transform(obj))
+        return buff.values()
+
+
 class iRODS(object):
     """
     Wrapper class for iRODS session with additional
@@ -74,83 +191,6 @@ class iRODS(object):
             for chunk in chunks(f):
                 hasher.update(chunk)
         return base64.b64encode(hasher.digest())
-
-    def get_objects(self, lst):
-        """
-        Get the DMF state for a list of objects.
-
-        lst -- A list of objects (absolute iRODS paths),
-               e.g. ['/irods/path/to/object1', '/irods/path/to/object2']
-
-        Returns:
-
-        A list of dictionaries with mixed DMF and iRODS information.
-
-        Example:
-        [{'DMF_bfid': '0',
-          ...
-          'DMF_path': '/path/to/dmf/object1',
-          'DMF_state': 'REG',
-          ...
-          'collection': u'/irods/path/to',
-          'object': 'object1',
-          ...},
-        ...]
-        """
-        def transform(obj):
-            ret = {'collection': os.path.dirname(obj.get('objPath', '')),
-                   'object': os.path.basename(obj.get('objPath', '')),
-                   'remote_file': str(obj.get('objPath', '')),
-                   'resource_value': str(obj.get('rescName')),
-                   'remote_replica_number': obj.get('replNum', 0),
-                   'remote_version': str(obj.get('version', '')),
-                   'remote_type': str(obj.get('dataType', '')),
-                   'remote_size': obj.get('dataSize', 0),
-                   'remote_owner_name': str(obj.get('dataOwnerName', '')),
-                   'remote_owner_zone': str(obj.get('dataOwnerZone', '')),
-                   'remote_replica_status': obj.get('replStatus', 1),
-                   'remote_status': str(obj.get('statusString', '')),
-                   'remote_checksum': str(obj.get('chksum', '')),
-                   'remote_expiry': str(obj.get('dataExpiry', '0')),
-                   'remote_create_time': int(obj.get('dataCreate', 0)),
-                   'remote_modify_time': int(obj.get('dataModify', 0))}
-            for k, v in obj.items():
-                if k.startswith('DMF_'):
-                    ret[str(k)] = str(v)
-            return ret
-
-        json_lst = json.dumps(lst)
-        if self.is_resource_server:
-            msiName = "msiGetDmfObject"
-        else:
-            msiName = "GetDmfObject"
-            # need to install the rule on the iCAT server:
-            # GetDmfObject(*lst, *res) {
-            #  *res = ""
-            #  remote("<irods5>","") {
-            #   msiGetDmfObject(*lst, *res);
-            #  }
-            # }
-        rule_code = ("getDmf {\n" +
-                     " *res=\"\";\n" +
-                     " " + msiName + "(*lst, *res);\n" +
-                     "}\n")
-        encoded_list = json_lst.replace('"', '\\"')
-        params = {"*lst": '"{0}"'.format(encoded_list)}
-        myrule = Rule(self.session,
-                      body=rule_code,
-                      params=params,
-                      output="*res")
-        try:
-            res = myrule.execute()
-        except Exception as e:
-            self.logger.error(str(e))
-            for line in rule_code.split('\n'):
-                self.logger.error(line)
-            self.logger.error('*lst: "{0}"'.format(encoded_list))
-            raise
-        objs = json.loads(self.get_rule_return_value(res, 0))
-        return [transform(obj) for obj in objs]
 
     def list_objects(self, filters={}, limit=-1):
         session = self.session

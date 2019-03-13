@@ -4,6 +4,7 @@ import json
 import time
 import traceback
 from .irods_session import iRODS
+from .irods_session import GetDmfObject
 from .config import DmIRodsConfig
 from irods.exception import NetworkException
 from irods.exception import RULE_FAILED_ERR
@@ -252,44 +253,29 @@ class DmIRodsServer(Server):
             arglimit = limit * 2
 
         with self.irods_connection() as irods:
+            rule = GetDmfObject(irods)
             tickets_done = {}
-            # first process all objects with a ticket
-            for item in self._process_list_tickets(irods):
+            for item in rule.process_all(self.list_tickets()):
                 remote_file = item.get('remote_file')
                 tickets_done[remote_file] = True
                 limit -= 1
                 yield ReturnCode.OK, json.dumps(item)
                 if limit == 0:
                     break
-            # then check if there are objects without tickets
-            if limit > 0:
-                proc = self._process_list_objects
-                for item in proc(irods,
-                                 tickets_done=tickets_done,
-                                 limit=arglimit):
+
+        # then check if there are objects without tickets
+        if limit > 0:
+            with self.irods_connection() as irods:
+                rule = GetDmfObject(irods)
+                lst_func = self.list_objects
+                for item in rule.process_all(lst_func(tickets_done,
+                                                      limit=arglimit)):
                     limit -= 1
                     yield ReturnCode.OK, json.dumps(item)
                     if limit == 0:
                         break
 
-    def _process_ticket(self, irods, buff):
-        remote_files = [item.get('remote_file')
-                        for item in buff]
-        if self.config.get('ignore_dmf_msi', False):
-            remote_objects = {}
-        else:
-            remote_objects = {item.get('remote_file'): item
-                              for item in irods.get_objects(remote_files)}
-        for item in buff:
-            remote_file = item.get('remote_file')
-            item['collection'] = os.path.dirname(remote_file)
-            item['object'] = os.path.basename(remote_file)
-            if remote_file in remote_objects:
-                for k, v in remote_objects[remote_file].items():
-                    item[str(k)] = v
-            yield item
-
-    def _process_list_tickets(self, irods):
+    def list_tickets(self):
         def sort_key(x):
             return Ticket.sorted_codes.index(x.status)
 
@@ -298,31 +284,21 @@ class DmIRodsServer(Server):
 
         ticket_list = sorted(ticket_list,
                              key=sort_key, reverse=False)
-        buff = []
-        with self.irods_connection() as irods2:
-            for ticket in ticket_list:
-                buff.append(ticket.to_dict())
-                if len(buff) == DmIRodsServer.LIST_BUFF_SIZE:
-                    for item in self._process_ticket(irods2, buff):
-                        yield item
-                    buff = []
-            if len(buff) > 0:
-                for item in self._process_ticket(irods2, buff):
-                    yield item
+        for ticket in ticket_list:
+            item = ticket.to_dict()
+            remote_file = item.get('remote_file')
+            item['collection'] = os.path.dirname(remote_file)
+            item['object'] = os.path.basename(remote_file)
+            yield item
 
-    def _process_list_objects(self, irods,
-                              tickets_done={}, filters={}, limit=-1):
-        buff = []
-        with self.irods_connection() as irods2:
+    def list_objects(self, tickets_done={}, filters={}, limit=-1):
+        """
+        Return a generator over all objects of the resource.
+        ticket_done is a ignore list
+        """
+        with self.irods_connection() as irods:
             for item in irods.list_objects(filters=filters, limit=limit):
                 if item['remote_file'] not in tickets_done:
-                    buff.append(item)
-                if len(buff) == DmIRodsServer.LIST_BUFF_SIZE:
-                    for item in self._process_ticket(irods2, buff):
-                        yield item
-                    buff = []
-            if len(buff) > 0:
-                for item in self._process_ticket(irods2, buff):
                     yield item
 
     def process_completion_list(self, obj):
