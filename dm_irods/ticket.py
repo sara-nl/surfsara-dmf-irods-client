@@ -62,6 +62,7 @@ class Ticket(object):
               'retries',
               'checksum',
               'transferred',
+              'transfer_time',
               'errmsg',
               'DMF_state']
 
@@ -79,6 +80,7 @@ class Ticket(object):
                  remote_size=None,
                  errmsg=None,
                  transferred=0,
+                 transfer_time=0,
                  DMF_state="???"):
         self.status = status
         self.mode = mode
@@ -90,6 +92,7 @@ class Ticket(object):
         self.local_size = local_size
         self.remote_size = remote_size
         self.transferred = transferred
+        self.transfer_time = transfer_time
         self.retries = int(retries)
         self.errmsg = ''
         if time_created is None:

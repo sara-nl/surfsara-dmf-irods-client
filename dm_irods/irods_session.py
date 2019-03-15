@@ -4,6 +4,7 @@ import logging
 import base64
 import hashlib
 import datetime
+import time
 import json
 from irods.session import iRODSSession
 from irods.models import Collection
@@ -96,7 +97,8 @@ class GetDmfObject(object):
             else:
                 irods_object_list += ','
             obj_path = item.get('remote_file')
-            buff[obj_path] = item
+            p = (obj_path, item.get('local_file'))
+            buff[p] = item
             irods_object_list += '"{0}"'.format(obj_path)
             if len(irods_object_list) >= GetDmfObject.MAX_RULE_SIZE:
                 irods_object_list += ')'
@@ -126,11 +128,12 @@ class GetDmfObject(object):
                 self.logger.error(line)
             self.logger.error('*lst: "{0}"'.format(irods_object_list))
             raise
-
-        for obj in json.loads(self.get_rule_return_value(res, 0)):
-            p = obj['objPath']
-            if p in buff:
-                buff[p].update(self.transform(obj))
+        dmf_values = {obj['objPath']: obj
+                      for obj in json.loads(self.get_rule_return_value(res,
+                                                                       0))}
+        for p in buff.keys():
+            if p[0] in dmf_values:
+                buff[p].update(self.transform(dmf_values[p[0]]))
         return buff.values()
 
 
@@ -237,6 +240,7 @@ class iRODS(object):
         ticket.transferred = 0
         ticket.remote_size = obj.size
         mb = 1024 * 1024
+        start_time = time.time()
         with obj.open('r') as f:
             with open(ticket.local_file, 'wb') as fo:
                 while True:
@@ -252,6 +256,8 @@ class iRODS(object):
                         self.logger.info('retrieved file %s',
                                          ticket.local_file)
                         break
+        end_time = time.time()
+        ticket.transfer_time = end_time - start_time
         ticket.update_local_checksum()
         self.checksum(ticket, remote_file)
 
@@ -263,6 +269,7 @@ class iRODS(object):
         ticket.transferred = 0
         mb = 1024 * 1024
         self.logger.info('checksum %s', ticket.checksum)
+        start_time = time.time()
         with open(ticket.local_file, 'rb') as fin:
             options = {kw.REG_CHKSUM_KW: ''}
             with self.session.data_objects.open(target, 'w',
@@ -278,6 +285,8 @@ class iRODS(object):
                     else:
                         self.logger.info('sent file %s', ticket.local_file)
                         break
+        end_time = time.time()
+        ticket.transfer_time = end_time - start_time
         ticket.update_local_attributes()
         self.checksum(ticket, target)
 

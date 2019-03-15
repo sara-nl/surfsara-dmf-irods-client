@@ -34,6 +34,9 @@ def dm_ilist(argv=sys.argv[1:]):
     parser.add_argument('--watch', '-w',
                         action='store_true',
                         help=help_watch)
+    parser.add_argument('--active', '-a',
+                        action='store_true',
+                        help='only active objects')
     args = parser.parse_args(argv)
     ensure_daemon_is_running()
     client = Client(DmIRodsServer.get_socket_file())
@@ -47,6 +50,8 @@ def dm_ilist(argv=sys.argv[1:]):
         table = Table(format=args.format)
         for code, result in client.request_all({"list": True,
                                                 "all": True,
+                                                "filter": {"active":
+                                                           args.active},
                                                 "limit": args.limit}):
             if code != ReturnCode.OK:
                 print_request_error(code, result)

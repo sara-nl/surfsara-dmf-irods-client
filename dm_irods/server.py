@@ -114,8 +114,8 @@ class DmIRodsServer(Server):
                 data = json.load(f)
             ticket = Ticket.from_json(data)
             if ticket.status in [Ticket.GETTING, Ticket.PUTTING]:
-                            ticket.retry()
-                            ticket.retries = 3
+                ticket.retry()
+                ticket.retries = 3
             p = (ticket.local_file, ticket.remote_file)
             self.tickets[p] = ticket
             if ticket.is_active():
@@ -246,6 +246,7 @@ class DmIRodsServer(Server):
 
     def process_list(self, obj):
         limit = obj.get('limit', None)
+        flt = obj.get('filter', {})
         if limit is None:
             limit = 1000000000
             arglimit = -1
@@ -255,7 +256,7 @@ class DmIRodsServer(Server):
         with self.irods_connection() as irods:
             rule = GetDmfObject(irods)
             tickets_done = {}
-            for item in rule.process_all(self.list_tickets()):
+            for item in rule.process_all(self.list_tickets(flt)):
                 remote_file = item.get('remote_file')
                 tickets_done[remote_file] = True
                 limit -= 1
@@ -264,7 +265,7 @@ class DmIRodsServer(Server):
                     break
 
         # then check if there are objects without tickets
-        if limit > 0:
+        if limit > 0 and not flt.get('active', False):
             with self.irods_connection() as irods:
                 rule = GetDmfObject(irods)
                 lst_func = self.list_objects
@@ -275,13 +276,19 @@ class DmIRodsServer(Server):
                     if limit == 0:
                         break
 
-    def list_tickets(self):
+    def list_tickets(self, flt={}):
         def sort_key(x):
             return Ticket.sorted_codes.index(x.status)
 
-        ticket_list = sorted(self.tickets.values(),
-                             key=lambda x: x.time_created)
+        def filter_ticket(x):
+            if flt.get('active', False):
+                return x.is_active()
+            else:
+                return True
 
+        ticket_list = sorted([t for t in self.tickets.values()
+                              if filter_ticket(t)],
+                             key=lambda x: x.time_created)
         ticket_list = sorted(ticket_list,
                              key=sort_key, reverse=False)
         for ticket in ticket_list:
@@ -415,7 +422,10 @@ class DmIRodsServer(Server):
                 self.logger.info('get %s -> %s' % (p[1], p[0]))
                 self.tickets[p].status = Ticket.GETTING
                 irods.get(ticket)
-                self.logger.info('done %s -> %s' % (p[1], p[0]))
+                self.logger.info('done %s -> %s (%d s)',
+                                 p[1],
+                                 p[0],
+                                 ticket.transfer_time)
                 self.tickets[p].status = Ticket.DONE
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
@@ -443,7 +453,10 @@ class DmIRodsServer(Server):
                 self.logger.info('put %s -> %s', p[0], p[1])
                 self.tickets[p].status = Ticket.PUTTING
                 irods.put(ticket)
-                self.logger.info('done %s -> %s', p[0], p[1])
+                self.logger.info('done %s -> %s (%f s)',
+                                 p[0],
+                                 p[1],
+                                 ticket.transfer_time)
                 self.tickets[p].status = Ticket.DONE
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
