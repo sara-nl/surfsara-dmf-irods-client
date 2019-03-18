@@ -180,9 +180,14 @@ class Ticket(object):
             self.checksum = sha256_checksum(self.local_file).decode()
 
     def update_local_attributes(self):
-        self.local_atime = os.path.getatime(self.local_file)
-        self.local_ctime = os.path.getctime(self.local_file)
-        self.local_size = os.path.getsize(self.local_file)
+        fname = self.local_file
+        if os.path.isfile(fname):
+            self.local_atime = os.path.getatime(fname)
+            self.local_ctime = os.path.getctime(fname)
+            self.local_size = os.path.getsize(fname)
+        else:
+            # has been removed
+            self.local_size = None
 
     def to_dict(self):
         ret = {f: getattr(self, f) for f in Ticket.fields}

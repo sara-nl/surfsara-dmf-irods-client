@@ -231,20 +231,20 @@ class DmIRodsServer(Server):
                                        "exception": e.__class__.__name__,
                                        "traceback": traceback.format_exc()})
 
-        with self.irods_connection() as irods:
-            filters = {'object': os.path.basename(remote_file),
-                       'collection': os.path.dirname(remote_file)}
-            for item in self._process_list_tickets(irods):
-                if item.get('remote_file') == remote_file:
-                    return ReturnCode.OK, json.dumps(item)
-            for item in self._process_list_objects(irods,
-                                                   tickets_done={},
-                                                   filters=filters,
-                                                   limit=1):
+        filters = {'object': os.path.basename(remote_file),
+                   'collection': os.path.dirname(remote_file)}
+        for code, item in self.process_list_dict({'limit': 1,
+                                                  'filter': filters}):
+            if item.get('remote_file') == remote_file:
                 return ReturnCode.OK, json.dumps(item)
-        return ReturnCode.OK, json.dumps({})
+        return ReturnCode.OK, {}
 
-    def process_list(self, obj):
+    def process_list_dict(self, obj):
+        def check_locally_deleted(item):
+            # check if file has been deleted:
+            if item.get('local_size', None) is None:
+                item['local_file'] = 'DELETED:' + item['local_file']
+
         limit = obj.get('limit', None)
         flt = obj.get('filter', {})
         if limit is None:
@@ -260,7 +260,8 @@ class DmIRodsServer(Server):
                 remote_file = item.get('remote_file')
                 tickets_done[remote_file] = True
                 limit -= 1
-                yield ReturnCode.OK, json.dumps(item)
+                check_locally_deleted(item)
+                yield ReturnCode.OK, item
                 if limit == 0:
                     break
 
@@ -272,9 +273,14 @@ class DmIRodsServer(Server):
                 for item in rule.process_all(lst_func(tickets_done,
                                                       limit=arglimit)):
                     limit -= 1
-                    yield ReturnCode.OK, json.dumps(item)
+                    check_locally_deleted(item)
+                    yield ReturnCode.OK, item
                     if limit == 0:
                         break
+
+    def process_list(self, obj):
+        for s, item in self.process_list_dict(obj):
+            yield s, json.dumps(item)
 
     def list_tickets(self, flt={}):
         def sort_key(x):
