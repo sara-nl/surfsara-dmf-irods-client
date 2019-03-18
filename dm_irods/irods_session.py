@@ -14,8 +14,8 @@ from irods.rule import Rule
 from irods import keywords as kw
 
 
-PUT_BLOCK_SIZE = 1024
-GET_BLOCK_SIZE = 1024
+PUT_BLOCK_SIZE = 1024 * io.DEFAULT_BUFFER_SIZE
+GET_BLOCK_SIZE = 1024 * io.DEFAULT_BUFFER_SIZE
 
 
 class GetDmfObject(object):
@@ -240,6 +240,7 @@ class iRODS(object):
         ticket.transferred = 0
         ticket.remote_size = obj.size
         mb = 1024 * 1024
+        transfer_block_size = 1024 * 1024 * 10
         start_time = time.time()
         with obj.open('r') as f:
             with open(ticket.local_file, 'wb') as fo:
@@ -247,10 +248,12 @@ class iRODS(object):
                     chunk = f.read(GET_BLOCK_SIZE)
                     if chunk:
                         ticket.transferred += len(chunk)
-                        if ticket.transferred % (1024 * 1024 * 10) == 0:
+                        if ticket.transferred % transfer_block_size == 0:
                             self.logger.info('retrieved %3.1f MB from %s',
                                              (ticket.transferred / mb),
                                              remote_file)
+                            if ticket.transferred >= 1024 * 1024 * 1024:
+                                transfer_block_size = 1024 * 1024 * 1024
                         fo.write(chunk)
                     else:
                         self.logger.info('retrieved file %s',
@@ -268,19 +271,23 @@ class iRODS(object):
         ticket.update_local_checksum()
         ticket.transferred = 0
         mb = 1024 * 1024
+        transfer_block_size = 1024 * 1024 * 10
         self.logger.info('checksum %s', ticket.checksum)
         start_time = time.time()
+        options = {kw.REG_CHKSUM_KW: '',
+                   kw.OPR_TYPE_KW: 1}  # PUT
         with open(ticket.local_file, 'rb') as fin:
-            options = {kw.REG_CHKSUM_KW: ''}
             with self.session.data_objects.open(target, 'w',
                                                 **options) as fout:
                 while True:
                     chunk = fin.read(PUT_BLOCK_SIZE)
                     if chunk:
                         ticket.transferred += len(chunk)
-                        if ticket.transferred % (1024 * 1024 * 10) == 0:
+                        if ticket.transferred % transfer_block_size == 0:
                             self.logger.info('sent %3.1f MB',
                                              (ticket.transferred / mb))
+                            if ticket.transferred >= 1024 * 1024 * 1024:
+                                transfer_block_size = 1024 * 1024 * 1024
                         fout.write(chunk)
                     else:
                         self.logger.info('sent file %s', ticket.local_file)

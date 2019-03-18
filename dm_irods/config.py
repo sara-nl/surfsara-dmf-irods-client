@@ -99,7 +99,7 @@ class DmIRodsConfig(object):
             irods_config = self.config.get('irods', {})
             default_value = c.get('connection_timeout',
                                   irods_config.get('connection_timeout',
-                                                   10))
+                                                   3600))
             return question('iRODS connection timeout (seconds) ',
                             default_value=default_value,
                             return_type=int)

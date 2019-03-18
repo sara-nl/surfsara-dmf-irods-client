@@ -476,6 +476,7 @@ class DmIRodsServer(Server):
             self.logger.warning(errmsg)
             self.logger.warning('remaining %d trials', self.tickets[p].retries)
             errmsg += '\nremaining %d trials' % self.tickets[p].retries
+            self.tickets[p].retry()
             self.tickets[p].errmsg = errmsg
             self.tickets[p].retries -= 1
             self.update_ticket(p[0], p[1])

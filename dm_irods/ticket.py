@@ -159,6 +159,7 @@ class Ticket(object):
 
     def retry(self):
         self.transferred = 0
+        self.transfer_time = 0
         self.status = Ticket.RETRY
 
     def update_local_checksum(self):
