@@ -28,6 +28,7 @@ class Ticket(object):
     UNDEF = 6
     ERROR = 7
     RETRY = 8
+    UNMIG = 9
 
     NONE = 0
     GET = 1
@@ -40,11 +41,13 @@ class Ticket(object):
                    5: "DONE",
                    6: "UNDEF",
                    7: "ERROR",
-                   8: "RETRY"}
+                   8: "RETRY",
+                   9: "UNMIG"}
     sorted_codes = [WAITING,
                     GETTING,
                     PUTTING,
                     RETRY,
+                    UNMIG,
                     CANCELED,
                     ERROR,
                     UNDEF,
@@ -93,6 +96,7 @@ class Ticket(object):
         self.remote_size = remote_size
         self.transferred = transferred
         self.transfer_time = transfer_time
+        self.last_unmig_check = time.time()
         self.retries = int(retries)
         self.errmsg = ''
         if time_created is None:
@@ -108,7 +112,8 @@ class Ticket(object):
         return (self.status == Ticket.WAITING or
                 self.status == Ticket.GETTING or
                 self.status == Ticket.PUTTING or
-                self.status == Ticket.RETRY)
+                self.status == Ticket.RETRY or
+                self.status == Ticket.UNMIG)
 
     def step(self, logger=logging.getLogger("Daemon")):
         logger.info('check %s' % self.to_json())
@@ -161,6 +166,12 @@ class Ticket(object):
         self.transferred = 0
         self.transfer_time = 0
         self.status = Ticket.RETRY
+
+    def unmig(self):
+        self.transferred = 0
+        self.transfer_time = 0
+        self.last_unmig_check = time.time()
+        self.status = Ticket.UNMIG
 
     def update_local_checksum(self):
         if sys.version_info[0] == 2:

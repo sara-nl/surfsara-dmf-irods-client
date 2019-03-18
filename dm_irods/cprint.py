@@ -67,6 +67,7 @@ def format_status(status, txt=None):
                         "PUTTING": format_processing,
                         "DONE": format_done,
                         "UNDEF": format_error,
+                        "UNMIG": format_error,
                         "ERROR": format_error,
                         "RETRY": format_warning}
     if txt is None:

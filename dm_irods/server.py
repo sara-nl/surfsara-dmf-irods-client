@@ -403,7 +403,7 @@ class DmIRodsServer(Server):
             ticket = self.active_tickets[p]
             if not self.active:
                 break
-            if ticket.status in [Ticket.WAITING, Ticket.RETRY]:
+            if ticket.status in [Ticket.UNMIG, Ticket.WAITING, Ticket.RETRY]:
                 self.heartbeat = time.time()
                 if ticket.mode == Ticket.GET:
                     self._tick_download(p, ticket)
@@ -430,6 +430,8 @@ class DmIRodsServer(Server):
                 del self.active_tickets[p]
                 self.update_ticket(p[0], p[1])
             except RULE_FAILED_ERR as e:
+                # state unmigrate
+                self.active_tickets[p].unmig()
                 self.logger.debug('failed rule %s', str(e))
             except NetworkException as e:
                 fmt = 'failed to get {remote} -> {local}'
