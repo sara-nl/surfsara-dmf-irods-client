@@ -242,7 +242,8 @@ class DmIRodsServer(Server):
     def process_list_dict(self, obj):
         def check_locally_deleted(item):
             # check if file has been deleted:
-            if item.get('local_size', None) is None:
+            if (item.get('local_size', None) is None and
+                item.get('local_file', None) is not None):
                 item['local_file'] = 'DELETED:' + item['local_file']
 
         limit = obj.get('limit', None)
