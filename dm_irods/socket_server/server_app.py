@@ -63,7 +63,10 @@ class ServerApp(object):
         self._logger = logger
         self.kwargs = kwargs
         if python is None:
-            self.python_prefix = ["/usr/bin/env", "python"]
+            if sys.version_info.major == 3:
+                self.python_prefix = ["/usr/bin/env", "python3"]
+            else:
+                self.python_prefix = ["/usr/bin/env", "python"]
         else:
             self.python_prefix = [python]
         self.verbose = verbose
